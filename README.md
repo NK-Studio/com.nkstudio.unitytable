@@ -1,6 +1,8 @@
 # Tabular Editor
 
 Unity 에디터에서 CSV/TSV 파일을 스프레드시트처럼 편집하는 UI Toolkit 기반 테이블 에디터입니다.
+<img width="1920" height="1080" alt="utable" src="https://github.com/user-attachments/assets/ebff4452-1c2c-412e-beaa-01e2acc5dfff" />
+
 
 ## 설치
 
