@@ -1,0 +1,10 @@
+.DS_Store
+Thumbs.db
+
+# Rider / VS
+.idea/
+.vs/
+*.user
+
+# UPM 패키지에서 .meta 파일은 반드시 커밋해야 한다.
+# GUID가 바뀌면 이 패키지를 쓰는 프로젝트의 에셋 참조가 끊어진다.

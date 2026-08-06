@@ -1,0 +1,250 @@
+.table-editor {
+    flex-grow: 1;
+    flex-direction: column;
+}
+
+/* 툴바 */
+
+.table-editor__toolbar-separator {
+    width: 1px;
+    margin-left: 4px;
+    margin-right: 4px;
+    margin-top: 2px;
+    margin-bottom: 2px;
+    background-color: var(--unity-colors-toolbar-border);
+}
+
+.table-editor__toolbar-spacer {
+    flex-grow: 1;
+}
+
+/* 툴바 토글의 글자를 버튼 가운데에 맞춘다. */
+
+.table-editor .unity-toolbar-toggle {
+    justify-content: center;
+    align-items: center;
+}
+
+.table-editor .unity-toolbar-toggle .unity-toggle__text {
+    flex-grow: 1;
+    -unity-text-align: middle-center;
+}
+
+/* 검색 바 */
+
+.table-editor__search-bar {
+    flex-direction: row;
+    align-items: center;
+    padding-left: 4px;
+    padding-right: 4px;
+    padding-top: 2px;
+    padding-bottom: 2px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--unity-colors-toolbar-border);
+    background-color: var(--unity-colors-toolbar-background);
+}
+
+.table-editor__search-bar--hidden {
+    display: none;
+}
+
+.table-editor__search-field {
+    width: 220px;
+}
+
+.table-editor__search-count {
+    min-width: 70px;
+    margin-left: 6px;
+    margin-right: 6px;
+    -unity-text-align: middle-left;
+    color: var(--unity-colors-label-text);
+}
+
+/* 그리드 */
+
+.table-editor__body {
+    flex-grow: 1;
+    flex-direction: row;
+    overflow: hidden;
+}
+
+.table-editor__grid-container {
+    flex-grow: 1;
+    position: relative;
+    overflow: hidden;
+}
+
+/* 행/열 추가 + 버튼 */
+
+.table-editor__add-button {
+    margin: 0;
+    padding: 0;
+    border-width: 1px;
+    border-color: var(--unity-colors-default-border);
+    border-radius: 0;
+    background-color: var(--unity-colors-toolbar-background);
+    color: var(--unity-colors-label-text);
+    font-size: 15px;
+    -unity-text-align: middle-center;
+}
+
+.table-editor__add-button:hover {
+    background-color: var(--unity-colors-button-background-hover);
+}
+
+.table-editor__add-column-button {
+    width: 22px;
+    flex-shrink: 0;
+}
+
+.table-editor__add-row-button {
+    height: 22px;
+    flex-shrink: 0;
+}
+
+.table-editor__grid {
+    flex-grow: 1;
+}
+
+/* 열 제목: MultiColumnListView 내부 요소라 Unity 클래스를 직접 지정한다. */
+
+/* 아이콘은 쓰지 않는데 16px를 차지해 제목이 오른쪽으로 밀린다. */
+.table-editor .unity-multi-column-header__column__icon {
+    display: none;
+}
+
+.table-editor .unity-multi-column-header__column__title {
+    flex-grow: 1;
+    -unity-text-align: middle-center;
+}
+
+.table-editor .unity-multi-column-header__column:hover {
+    background-color: var(--unity-colors-button-background-hover);
+}
+
+.table-editor .unity-multi-column-header__column.table-editor__column-header--selected {
+    background-color: var(--unity-colors-highlight-background);
+}
+
+.table-editor .table-editor__column-header--selected .unity-multi-column-header__column__title {
+    color: var(--unity-colors-highlight-text);
+    -unity-font-style: bold;
+}
+
+.table-editor__cell {
+    flex-grow: 1;
+    flex-shrink: 1;
+    justify-content: center;
+    overflow: hidden;
+    padding-left: 4px;
+    padding-right: 4px;
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-right-color: var(--unity-colors-default-border);
+    border-bottom-color: var(--unity-colors-default-border);
+}
+
+.table-editor__cell--selected {
+    background-color: var(--unity-colors-highlight-background-inactive);
+}
+
+.table-editor__cell--active {
+    background-color: var(--unity-colors-highlight-background);
+    border-left-width: 1px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-color: var(--unity-colors-highlight-background-hover);
+    border-top-color: var(--unity-colors-highlight-background-hover);
+    border-right-color: var(--unity-colors-highlight-background-hover);
+    border-bottom-color: var(--unity-colors-highlight-background-hover);
+}
+
+.table-editor__cell--match {
+    background-color: var(--unity-colors-highlight-background-hover);
+}
+
+.table-editor__cell--editing .table-editor__cell-label {
+    visibility: hidden;
+}
+
+.table-editor__cell-label {
+    -unity-text-align: middle-left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+    color: var(--unity-colors-label-text);
+}
+
+.table-editor__row-number {
+    flex-grow: 1;
+    justify-content: center;
+    align-items: center;
+    background-color: var(--unity-colors-toolbar-background);
+    border-right-width: 1px;
+    border-bottom-width: 1px;
+    border-right-color: var(--unity-colors-default-border);
+    border-bottom-color: var(--unity-colors-default-border);
+}
+
+.table-editor__row-number:hover {
+    background-color: var(--unity-colors-button-background-hover);
+}
+
+.table-editor__row-number--selected {
+    background-color: var(--unity-colors-highlight-background);
+}
+
+.table-editor__row-number--selected .table-editor__row-number-label {
+    color: var(--unity-colors-highlight-text);
+    -unity-font-style: bold;
+}
+
+.table-editor__row-number-label {
+    -unity-text-align: middle-center;
+    color: var(--unity-colors-label-text);
+    font-size: 10px;
+}
+
+/* 셀 편집 오버레이 */
+
+/*
+ * 편집 필드는 항상 활성 셀 위에 있고 항상 포커스를 유지한다.
+ * 그래야 한글 IME 조합이 첫 자모부터 이 필드에서 시작되어 끊기지 않는다.
+ * display로 숨기면 다시 켠 프레임에 포커스를 받지 못하므로, 유휴 상태는 opacity로만 감춘다.
+ */
+.table-editor__edit-field {
+    position: absolute;
+    margin: 0;
+    opacity: 0;
+}
+
+.table-editor__edit-field--editing {
+    opacity: 1;
+}
+
+/* 상태 바 */
+
+.table-editor__status-bar {
+    flex-direction: row;
+    align-items: center;
+    height: 20px;
+    padding-left: 6px;
+    padding-right: 6px;
+    border-top-width: 1px;
+    border-top-color: var(--unity-colors-toolbar-border);
+    background-color: var(--unity-colors-toolbar-background);
+}
+
+.table-editor__status-label {
+    margin-right: 14px;
+    font-size: 10px;
+    color: var(--unity-colors-label-text);
+}
+
+/* 빈 상태 */
+
+.table-editor__empty-message {
+    flex-grow: 1;
+    -unity-text-align: middle-center;
+    color: var(--unity-colors-label-text);
+}

@@ -1,0 +1,16 @@
+{
+    "name": "NKStudio.TabularEditor.Editor",
+    "rootNamespace": "NKStudio.TabularEditor",
+    "references": [],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

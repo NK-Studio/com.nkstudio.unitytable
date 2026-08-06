@@ -1,0 +1,22 @@
+{
+  "name": "com.nkstudio.unitytable",
+  "version": "1.0.0",
+  "displayName": "Tabular Editor",
+  "description": "Unity 에디터에서 CSV/TSV 파일을 스프레드시트처럼 편집하는 UI Toolkit 기반 테이블 에디터입니다. 키보드 셀 이동, Ctrl+S 저장, Undo/Redo, 복사/붙여넣기, 검색을 지원합니다.",
+  "unity": "6000.0",
+  "author": {
+    "name": "NKStudio"
+  },
+  "keywords": [
+    "editor",
+    "csv",
+    "tsv",
+    "spreadsheet",
+    "ui-toolkit"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NK-Studio/com.nkstudio.unitytable.git"
+  },
+  "license": "MIT"
+}

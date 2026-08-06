@@ -1,0 +1,91 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements">
+    <Style src="TableEditorWindow.uss" />
+
+    <ui:VisualElement name="table-editor" class="table-editor">
+        <uie:Toolbar class="table-editor__toolbar">
+            <uie:ToolbarButton
+                name="table-editor__save-button"
+                text="저장"
+                tooltip="변경 사항을 파일에 저장합니다. (Ctrl+S)" />
+            <uie:ToolbarButton
+                name="table-editor__reload-button"
+                text="다시 불러오기"
+                tooltip="저장하지 않은 변경 사항을 버리고 파일을 다시 읽습니다." />
+
+            <ui:VisualElement class="table-editor__toolbar-separator" />
+
+            <uie:ToolbarToggle
+                name="table-editor__header-toggle"
+                text="첫 행을 헤더로"
+                tooltip="첫 행을 열 제목으로 사용하고 편집 대상에서 제외합니다." />
+
+            <ui:VisualElement class="table-editor__toolbar-spacer" />
+
+            <uie:ToolbarButton
+                name="table-editor__search-button"
+                text="검색"
+                tooltip="셀 내용을 검색합니다. (Ctrl+F)" />
+        </uie:Toolbar>
+
+        <ui:VisualElement
+            name="table-editor__search-bar"
+            class="table-editor__search-bar table-editor__search-bar--hidden">
+            <uie:ToolbarSearchField
+                name="table-editor__search-field"
+                class="table-editor__search-field" />
+            <ui:Label
+                name="table-editor__search-count"
+                class="table-editor__search-count"
+                text="0 / 0" />
+            <uie:ToolbarToggle
+                name="table-editor__search-case-toggle"
+                text="Aa"
+                tooltip="대소문자를 구분해 검색합니다." />
+            <uie:ToolbarButton
+                name="table-editor__search-previous-button"
+                text="이전"
+                tooltip="이전 일치 항목으로 이동합니다. (Shift+F3)" />
+            <uie:ToolbarButton
+                name="table-editor__search-next-button"
+                text="다음"
+                tooltip="다음 일치 항목으로 이동합니다. (F3)" />
+            <uie:ToolbarButton
+                name="table-editor__search-close-button"
+                text="닫기"
+                tooltip="검색을 닫습니다. (Esc)" />
+        </ui:VisualElement>
+
+        <ui:VisualElement class="table-editor__body">
+            <ui:VisualElement
+                name="table-editor__grid-container"
+                class="table-editor__grid-container" />
+            <ui:Button
+                name="table-editor__add-column-button"
+                class="table-editor__add-button table-editor__add-column-button"
+                text="+"
+                tooltip="맨 오른쪽에 열을 추가합니다." />
+        </ui:VisualElement>
+
+        <ui:Button
+            name="table-editor__add-row-button"
+            class="table-editor__add-button table-editor__add-row-button"
+            text="+"
+            tooltip="맨 아래에 행을 추가합니다." />
+
+        <ui:VisualElement name="table-editor__status-bar" class="table-editor__status-bar">
+            <ui:Label
+                name="table-editor__status-position"
+                class="table-editor__status-label"
+                text="—" />
+            <ui:Label
+                name="table-editor__status-size"
+                class="table-editor__status-label"
+                text="—" />
+            <ui:VisualElement class="table-editor__toolbar-spacer" />
+            <ui:Label
+                name="table-editor__status-state"
+                class="table-editor__status-label"
+                text="" />
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>
