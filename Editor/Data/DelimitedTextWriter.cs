@@ -16,11 +16,7 @@ namespace NKStudio.TabularEditor.Data
         /// <param name="newLine">행 사이에 넣을 개행 문자열입니다.</param>
         /// <param name="endsWithNewLine">마지막 행 뒤에 개행을 붙일지 여부입니다.</param>
         /// <returns>직렬화된 텍스트입니다.</returns>
-        public static string Write(
-            IReadOnlyList<IReadOnlyList<string>> rows,
-            char delimiter,
-            string newLine,
-            bool endsWithNewLine)
+        public static string Write(IReadOnlyList<IReadOnlyList<string>> rows, char delimiter, string newLine, bool endsWithNewLine)
         {
             if (rows == null || rows.Count == 0)
                 return string.Empty;

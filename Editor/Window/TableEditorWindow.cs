@@ -70,14 +70,6 @@ namespace NKStudio.TabularEditor.Window
             return window;
         }
 
-        [MenuItem("Window/NKStudio/Tabular Editor")]
-        private static void OpenEmpty()
-        {
-            TableEditorWindow window = CreateWindow<TableEditorWindow>();
-            window.minSize = new Vector2(420f, 220f);
-            window.Show();
-        }
-
         /// <summary>
         /// UXML을 인스턴스화하고 View, 검색, 입력 라우터를 구성합니다.
         /// </summary>
