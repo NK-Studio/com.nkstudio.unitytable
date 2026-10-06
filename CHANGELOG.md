@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1]
+
+### Changed
+
+- 지원 버전을 Unity 6.0까지 낮췄다. 6.3 이상은 `EntityId` 기반, 6.0~6.2는 기존 instance ID(`int`)
+  기반 `OnOpenAsset` 핸들러를 사용해 `.csv`/`.tsv` 더블클릭 열기가 모든 버전에서 동작한다.
+
 ## [1.0.0]
 
 첫 릴리스.
