@@ -260,10 +260,10 @@ namespace NKStudio.TabularEditor.Window
             _matchSet.UnionWith(_matches);
         }
 
+        // 셀마다 문자열을 만들지 않도록 문서가 원본 텍스트에서 직접 비교한다.
         private static bool CellContains(TableDocument document, CellCoord coord, string keyword, StringComparison comparison)
         {
-            string value = document.GetCell(coord.Row, coord.Column);
-            return !string.IsNullOrEmpty(value) && value.IndexOf(keyword, comparison) >= 0;
+            return document.CellContains(coord.Row, coord.Column, keyword, comparison);
         }
 
         private void MoveToMatch(int direction)

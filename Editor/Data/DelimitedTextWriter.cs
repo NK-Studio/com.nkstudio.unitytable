@@ -49,6 +49,44 @@ namespace NKStudio.TabularEditor.Data
         }
 
         /// <summary>
+        /// 문서를 구분자 텍스트로 직렬화합니다. 셀을 하나씩 읽어 쓰므로 문서 전체를 문자열 목록으로 복사하지 않는다.
+        /// </summary>
+        /// <param name="document">직렬화할 문서입니다.</param>
+        /// <param name="delimiter">필드 구분자입니다.</param>
+        /// <param name="newLine">행 사이에 넣을 개행 문자열입니다.</param>
+        /// <param name="endsWithNewLine">마지막 행 뒤에 개행을 붙일지 여부입니다.</param>
+        /// <returns>직렬화된 텍스트입니다.</returns>
+        public static string Write(TableDocument document, char delimiter, string newLine, bool endsWithNewLine)
+        {
+            if (document == null || document.RowCount == 0)
+                return string.Empty;
+
+            if (string.IsNullOrEmpty(newLine))
+                newLine = "\n";
+
+            StringBuilder builder = new();
+
+            for (int rowIndex = 0; rowIndex < document.RowCount; rowIndex++)
+            {
+                if (rowIndex > 0)
+                    builder.Append(newLine);
+
+                for (int columnIndex = 0; columnIndex < document.ColumnCount; columnIndex++)
+                {
+                    if (columnIndex > 0)
+                        builder.Append(delimiter);
+
+                    AppendField(builder, document.GetCell(rowIndex, columnIndex), delimiter);
+                }
+            }
+
+            if (endsWithNewLine)
+                builder.Append(newLine);
+
+            return builder.ToString();
+        }
+
+        /// <summary>
         /// 셀 값을 필요한 경우에만 인용해 추가합니다.
         /// </summary>
         /// <param name="builder">대상 문자열 버퍼입니다.</param>

@@ -5,11 +5,18 @@ namespace NKStudio.TabularEditor.Data
 {
     /// <summary>
     /// 편집 중인 테이블의 행과 셀을 보관하는 모델입니다. UI에 의존하지 않습니다.
+    /// 파일에서 읽은 셀은 문자열로 만들지 않고 원본 텍스트 안의 구간(<see cref="CellSlot"/>)으로만 들고 있다가,
+    /// 화면에 보이는 셀처럼 실제로 읽을 때 문자열을 만든다. 편집한 셀만 별도 목록에 문자열로 둔다.
     /// </summary>
     public sealed class TableDocument
     {
-        private readonly List<List<string>> _rows = new();
+        private readonly List<List<CellSlot>> _rows = new();
 
+        // 편집으로 들어온 값들이다. 같은 셀을 다시 편집하면 그 자리를 덮어써 목록이 계속 자라지 않는다.
+        // 삭제된 행/열이 쓰던 항목은 회수하지 않는다. 편집 횟수만큼만 남으므로 문서 수명 동안 무시할 만하다.
+        private readonly List<string> _editedValues = new();
+
+        private string _text = string.Empty;
         private int _columnCount;
 
         /// <summary>
@@ -53,29 +60,67 @@ namespace NKStudio.TabularEditor.Data
         /// <param name="rows">교체할 행 목록입니다.</param>
         public void SetContent(List<List<string>> rows)
         {
-            _rows.Clear();
-
-            int columnCount = 0;
+            ResetStorage(string.Empty);
 
             if (rows != null)
             {
                 foreach (List<string> row in rows)
                 {
-                    if (row.Count > columnCount)
-                        columnCount = row.Count;
-                }
+                    List<CellSlot> slots = new(row.Count);
 
-                foreach (List<string> row in rows)
-                    _rows.Add(new List<string>(row));
+                    foreach (string value in row)
+                        slots.Add(CreateEditedSlot(value));
+
+                    _rows.Add(slots);
+                }
             }
 
-            _columnCount = Math.Max(1, columnCount);
+            FinishContent();
+        }
 
-            if (_rows.Count == 0)
-                _rows.Add(new List<string>());
+        /// <summary>
+        /// 파서가 기록한 셀 구간으로 문서 내용을 교체합니다. 셀 문자열은 읽을 때 만든다.
+        /// </summary>
+        /// <param name="text">셀 구간이 가리키는 원본 텍스트입니다.</param>
+        /// <param name="rows">행마다 셀 구간을 담은 목록입니다.</param>
+        internal void SetParsedContent(string text, List<List<CellSlot>> rows)
+        {
+            ResetStorage(text ?? string.Empty);
 
-            NormalizeRows();
-            StructureChanged?.Invoke();
+            if (rows != null)
+                _rows.AddRange(rows);
+
+            FinishContent();
+        }
+
+        /// <summary>
+        /// 셀 문자열을 만들지 않고 셀 값에 키워드가 들어 있는지 검사합니다. 검색처럼 모든 셀을 훑을 때 쓴다.
+        /// </summary>
+        /// <param name="row">행 인덱스입니다.</param>
+        /// <param name="column">열 인덱스입니다.</param>
+        /// <param name="keyword">찾을 문자열입니다. 비어 있으면 false입니다.</param>
+        /// <param name="comparison">비교 방식입니다.</param>
+        /// <returns>셀 값에 키워드가 있으면 true입니다.</returns>
+        public bool CellContains(int row, int column, string keyword, StringComparison comparison)
+        {
+            if (string.IsNullOrEmpty(keyword))
+                return false;
+
+            if (row < 0 || row >= _rows.Count || column < 0 || column >= _columnCount)
+                return false;
+
+            CellSlot slot = _rows[row][column];
+
+            // 원본 구간을 그대로 쓰는 셀만 할당 없이 비교할 수 있다. 따옴표 해석이 필요한 셀과 편집한 셀은 값을 만들어 비교한다.
+            if (!slot.IsEditedValue && !slot.IsQuoted)
+            {
+                if (slot.RawLength < keyword.Length)
+                    return false;
+
+                return _text.IndexOf(keyword, slot.TextStart, slot.RawLength, comparison) >= 0;
+            }
+
+            return Resolve(slot).IndexOf(keyword, comparison) >= 0;
         }
 
         /// <summary>
@@ -92,7 +137,7 @@ namespace NKStudio.TabularEditor.Data
             if (column < 0 || column >= _columnCount)
                 return string.Empty;
 
-            return _rows[row][column] ?? string.Empty;
+            return Resolve(_rows[row][column]);
         }
 
         /// <summary>
@@ -111,10 +156,16 @@ namespace NKStudio.TabularEditor.Data
 
             value ??= string.Empty;
 
-            if (string.Equals(_rows[row][column], value, StringComparison.Ordinal))
+            CellSlot current = _rows[row][column];
+
+            if (string.Equals(Resolve(current), value, StringComparison.Ordinal))
                 return;
 
-            _rows[row][column] = value;
+            if (current.IsEditedValue && value.Length > 0)
+                _editedValues[current.EditedValueIndex] = value;
+            else
+                _rows[row][column] = CreateEditedSlot(value);
+
             CellChanged?.Invoke(row, column);
         }
 
@@ -128,7 +179,12 @@ namespace NKStudio.TabularEditor.Data
             if (row < 0 || row >= _rows.Count)
                 return Array.Empty<string>();
 
-            return _rows[row].ToArray();
+            string[] values = new string[_columnCount];
+
+            for (int columnIndex = 0; columnIndex < _columnCount; columnIndex++)
+                values[columnIndex] = Resolve(_rows[row][columnIndex]);
+
+            return values;
         }
 
         /// <summary>
@@ -144,7 +200,7 @@ namespace NKStudio.TabularEditor.Data
             string[] values = new string[_rows.Count];
 
             for (int rowIndex = 0; rowIndex < _rows.Count; rowIndex++)
-                values[rowIndex] = _rows[rowIndex][column];
+                values[rowIndex] = Resolve(_rows[rowIndex][column]);
 
             return values;
         }
@@ -166,13 +222,13 @@ namespace NKStudio.TabularEditor.Data
 
             for (int offset = 0; offset < insertCount; offset++)
             {
-                List<string> row = new(_columnCount);
+                List<CellSlot> row = new(_columnCount);
                 string[] source = values != null ? values[offset] : null;
 
                 for (int columnIndex = 0; columnIndex < _columnCount; columnIndex++)
                 {
                     bool hasSource = source != null && columnIndex < source.Length;
-                    row.Add(hasSource ? source[columnIndex] : string.Empty);
+                    row.Add(hasSource ? CreateEditedSlot(source[columnIndex]) : CellSlot.Empty);
                 }
 
                 _rows.Insert(index + offset, row);
@@ -199,7 +255,7 @@ namespace NKStudio.TabularEditor.Data
                 return removed;
 
             for (int offset = 0; offset < count; offset++)
-                removed.Add(_rows[index + offset].ToArray());
+                removed.Add(GetRowValues(index + offset));
 
             _rows.RemoveRange(index, count);
             StructureChanged?.Invoke();
@@ -229,9 +285,9 @@ namespace NKStudio.TabularEditor.Data
                 for (int rowIndex = 0; rowIndex < _rows.Count; rowIndex++)
                 {
                     bool hasSource = source != null && rowIndex < source.Length;
-                    string value = hasSource ? source[rowIndex] : string.Empty;
+                    CellSlot slot = hasSource ? CreateEditedSlot(source[rowIndex]) : CellSlot.Empty;
 
-                    _rows[rowIndex].Insert(index + offset, value);
+                    _rows[rowIndex].Insert(index + offset, slot);
                 }
             }
 
@@ -259,7 +315,7 @@ namespace NKStudio.TabularEditor.Data
             for (int offset = 0; offset < count; offset++)
                 removed.Add(GetColumnValues(index + offset));
 
-            foreach (List<string> row in _rows)
+            foreach (List<CellSlot> row in _rows)
                 row.RemoveRange(index, count);
 
             _columnCount -= count;
@@ -269,21 +325,71 @@ namespace NKStudio.TabularEditor.Data
         }
 
         /// <summary>
-        /// 문서의 모든 행을 읽기 전용 목록으로 반환합니다. 직렬화에 사용합니다.
+        /// 문서의 모든 셀을 문자열로 만들어 반환합니다. 셀마다 문자열을 새로 만들므로 큰 문서에서는 비싸다.
+        /// 파일 저장은 이 메서드를 거치지 않는다.
         /// </summary>
         /// <returns>행 목록입니다.</returns>
         public IReadOnlyList<IReadOnlyList<string>> GetRows()
         {
-            return _rows;
+            List<IReadOnlyList<string>> rows = new(_rows.Count);
+
+            for (int rowIndex = 0; rowIndex < _rows.Count; rowIndex++)
+                rows.Add(GetRowValues(rowIndex));
+
+            return rows;
+        }
+
+        private string Resolve(CellSlot slot)
+        {
+            return slot.IsEditedValue
+                ? _editedValues[slot.EditedValueIndex]
+                : slot.ResolveFromText(_text);
+        }
+
+        // 빈 값은 목록에 넣지 않고 빈 셀로 둔다.
+        private CellSlot CreateEditedSlot(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return CellSlot.Empty;
+
+            _editedValues.Add(value);
+            return CellSlot.FromEditedValue(_editedValues.Count - 1);
+        }
+
+        private void ResetStorage(string text)
+        {
+            _rows.Clear();
+            _editedValues.Clear();
+            _text = text;
+        }
+
+        // 최대 열 수에 맞춰 행을 패딩하고 구조 변경을 알린다. 행이 하나도 없으면 빈 행 하나를 둔다.
+        private void FinishContent()
+        {
+            int columnCount = 0;
+
+            foreach (List<CellSlot> row in _rows)
+            {
+                if (row.Count > columnCount)
+                    columnCount = row.Count;
+            }
+
+            _columnCount = Math.Max(1, columnCount);
+
+            if (_rows.Count == 0)
+                _rows.Add(new List<CellSlot>());
+
+            NormalizeRows();
+            StructureChanged?.Invoke();
         }
 
         // 모든 행의 셀 개수를 열 개수에 맞춘다.
         private void NormalizeRows()
         {
-            foreach (List<string> row in _rows)
+            foreach (List<CellSlot> row in _rows)
             {
                 while (row.Count < _columnCount)
-                    row.Add(string.Empty);
+                    row.Add(CellSlot.Empty);
 
                 if (row.Count > _columnCount)
                     row.RemoveRange(_columnCount, row.Count - _columnCount);

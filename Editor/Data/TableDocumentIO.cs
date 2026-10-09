@@ -59,10 +59,10 @@ namespace NKStudio.TabularEditor.Data
                 bytes.Length - preambleLength);
 
             char delimiter = TableFormatUtility.GetDelimiter(document.Format);
-            List<List<string>> rows = DelimitedTextParser.Parse(text, delimiter, options);
+            List<List<CellSlot>> rows = DelimitedTextParser.ParseSlots(text, delimiter, options);
 
             document.FileOptions = options;
-            document.SetContent(rows);
+            document.SetParsedContent(text, rows);
 
             return document;
         }
@@ -96,7 +96,7 @@ namespace NKStudio.TabularEditor.Data
             char delimiter = TableFormatUtility.GetDelimiter(document.Format);
 
             string text = DelimitedTextWriter.Write(
-                document.GetRows(),
+                document,
                 delimiter,
                 options.NewLine,
                 options.EndsWithNewLine);
