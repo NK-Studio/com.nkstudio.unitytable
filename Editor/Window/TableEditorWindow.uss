@@ -106,34 +106,77 @@
     flex-grow: 1;
 }
 
-/* 열 제목: MultiColumnListView 내부 요소라 Unity 클래스를 직접 지정한다. */
+/* 열 제목: 보이는 열만 만들어 가로 스크롤 위치만큼 왼쪽으로 민다. */
 
-/* 아이콘은 쓰지 않는데 16px를 차지해 제목이 오른쪽으로 밀린다. */
-.table-editor .unity-multi-column-header__column__icon {
-    display: none;
+.table-editor__header {
+    height: 22px;
+    flex-shrink: 0;
+    overflow: hidden;
+    background-color: var(--unity-colors-toolbar-background);
+    border-bottom-width: 1px;
+    border-bottom-color: var(--unity-colors-default-border);
 }
 
-.table-editor .unity-multi-column-header__column__title {
-    flex-grow: 1;
-    -unity-text-align: middle-center;
+.table-editor__header-content {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
 }
 
-.table-editor .unity-multi-column-header__column:hover {
+.table-editor__column-header {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    justify-content: center;
+    overflow: hidden;
+    border-right-width: 1px;
+    border-right-color: var(--unity-colors-default-border);
+}
+
+.table-editor__column-header:hover {
     background-color: var(--unity-colors-button-background-hover);
 }
 
-.table-editor .unity-multi-column-header__column.table-editor__column-header--selected {
+.table-editor__column-header--corner:hover {
+    background-color: rgba(0, 0, 0, 0);
+}
+
+.table-editor__column-header--selected {
     background-color: var(--unity-colors-highlight-background);
 }
 
-.table-editor .table-editor__column-header--selected .unity-multi-column-header__column__title {
+.table-editor__column-header-title {
+    padding-left: 4px;
+    padding-right: 4px;
+    -unity-text-align: middle-center;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+    color: var(--unity-colors-label-text);
+}
+
+.table-editor__column-header--selected .table-editor__column-header-title {
     color: var(--unity-colors-highlight-text);
     -unity-font-style: bold;
 }
 
+/* 열 오른쪽 경계의 폭 조절 손잡이 */
+.table-editor__column-resizer {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 4px;
+    cursor: resize-horizontal;
+}
+
+/* 셀은 보이는 열만 만들어 열 위치에 절대 배치한다. left/width는 코드가 지정한다. */
+
 .table-editor__cell {
-    flex-grow: 1;
-    flex-shrink: 1;
+    position: absolute;
+    top: 0;
+    bottom: 0;
     justify-content: center;
     overflow: hidden;
     padding-left: 4px;
@@ -176,7 +219,10 @@
 }
 
 .table-editor__row-number {
-    flex-grow: 1;
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
     justify-content: center;
     align-items: center;
     background-color: var(--unity-colors-toolbar-background);

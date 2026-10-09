@@ -10,8 +10,10 @@ using UnityEngine.UIElements;
 namespace NKStudio.TabularEditor.Window
 {
     /// <summary>
-    /// MultiColumnListView로 테이블을 표시하고 셀 선택과 셀 편집을 담당하는 View입니다.
+    /// 테이블을 표시하고 셀 선택과 셀 편집을 담당하는 View입니다.
     /// 문서 변경은 직접 수행하지 않고 CommandRequested 이벤트로 위임합니다.
+    /// 행은 ListView가, 열은 이 클래스가 가상화한다. 화면에 보이는 열 범위의 셀만 만들어
+    /// 행마다 절대 위치로 배치하므로 열이 많아도 생성·바인딩 비용이 화면 크기에 비례한다.
     /// </summary>
     public sealed class TableGridView : IDisposable
     {
@@ -24,27 +26,50 @@ namespace NKStudio.TabularEditor.Window
         private const string RowNumberClassName = "table-editor__row-number";
         private const string RowNumberSelectedClassName = "table-editor__row-number--selected";
         private const string ColumnHeaderSelectedClassName = "table-editor__column-header--selected";
-        private const string UnityColumnHeaderContainerClassName = "unity-multi-column-header";
-        private const string UnityColumnHeaderClassName = "unity-multi-column-header__column";
+        private const string HeaderClassName = "table-editor__header";
+        private const string HeaderContentClassName = "table-editor__header-content";
+        private const string ColumnHeaderClassName = "table-editor__column-header";
+        private const string ColumnHeaderCornerClassName = "table-editor__column-header--corner";
+        private const string ColumnHeaderTitleClassName = "table-editor__column-header-title";
+        private const string ColumnResizerClassName = "table-editor__column-resizer";
+        private const string RowClassName = "table-editor__row";
         private const string RowNumberLabelClassName = "table-editor__row-number-label";
         private const string EditFieldEditingClassName = "table-editor__edit-field--editing";
 
         private const float DefaultColumnWidth = 160f;
         private const float RowNumberColumnWidth = 46f;
         private const float RowHeight = 20f;
-        private const float ColumnResizeEdgeWidth = 4f;
+        private const float MinColumnWidth = 40f;
+
+        // 빠르게 가로 스크롤할 때 가장자리 열이 한 프레임 비어 보이지 않도록 양옆으로 더 만들어 둔다.
+        private const int OffscreenColumnBuffer = 2;
+
+        // 첫 레이아웃 전에는 뷰포트 폭을 알 수 없어 넉넉히 잡는다. GeometryChangedEvent에서 곧바로 실제 폭으로 바로잡힌다.
+        private const float FallbackViewportWidth = 1600f;
 
         private readonly VisualElement _container;
-        private readonly MultiColumnListView _listView;
+        private readonly VisualElement _header;
+        private readonly VisualElement _headerContent;
+        private readonly ListView _listView;
+        private readonly ScrollView _scrollView;
         private readonly TextField _editField;
+        private readonly ContextualMenuManipulator _headerMenuManipulator;
+        private readonly IVisualElementScheduledItem _placementUpdate;
         private readonly List<int> _itemIndices = new();
         private readonly List<float> _columnWidths = new();
 
+        // _columnLefts[i]는 i번 열의 왼쪽 끝(행 번호 거터 제외)이다. 길이는 열 개수 + 1이고 마지막 값이 전체 폭이다.
+        private readonly List<float> _columnLefts = new() { 0f };
+        private readonly List<VisualElement> _headerCells = new();
+        private readonly HashSet<TableRowElement> _boundRows = new();
+
         private TableDocument _document;
-        private ScrollView _scrollView;
-        private VisualElement _columnHeaderContainer;
-        private ContextualMenuManipulator _columnHeaderManipulator;
+        private int _firstVisibleColumn;
+        private int _lastVisibleColumn = -1;
         private int _pressedColumnIndex = -1;
+        private int _resizingColumn = -1;
+        private float _resizeStartX;
+        private float _resizeStartWidth;
         private HashSet<CellCoord> _matches;
         private bool _isDragSelecting;
         private bool _isEditing;
@@ -64,7 +89,15 @@ namespace NKStudio.TabularEditor.Window
             Selection = new CellSelection();
             Selection.Changed += OnSelectionChanged;
 
-            _listView = new MultiColumnListView();
+            _header = new VisualElement();
+            _header.AddToClassList(HeaderClassName);
+            _headerContent = new VisualElement();
+            _headerContent.AddToClassList(HeaderContentClassName);
+            _headerContent.Add(MakeCornerHeaderCell());
+            _header.Add(_headerContent);
+            _container.Add(_header);
+
+            _listView = new ListView();
             _listView.AddToClassList("table-editor__grid");
             _listView.selectionType = SelectionType.None;
             _listView.virtualizationMethod = CollectionVirtualizationMethod.FixedHeight;
@@ -74,8 +107,14 @@ namespace NKStudio.TabularEditor.Window
             _listView.horizontalScrollingEnabled = true;
             _listView.focusable = true;
             _listView.itemsSource = _itemIndices;
-            _listView.columns.reorderable = false;
+            _listView.makeItem = MakeRow;
+            _listView.bindItem = BindRow;
+            _listView.unbindItem = UnbindRow;
             _container.Add(_listView);
+
+            _scrollView = _listView.Q<ScrollView>();
+            _scrollView.horizontalScroller.valueChanged += OnHorizontalScrollChanged;
+            _scrollView.verticalScroller.valueChanged += OnVerticalScrollChanged;
 
             _editField = new TextField();
             _editField.AddToClassList("table-editor__edit-field");
@@ -91,9 +130,17 @@ namespace NKStudio.TabularEditor.Window
             _container.Add(_editField);
             SetEditFieldEditing(false);
 
+            // 스크롤 직후에는 새로 바인딩한 셀의 레이아웃이 아직 없으므로 다음 프레임에 편집 필드를 옮긴다.
+            _placementUpdate = _listView.schedule.Execute(UpdateEditFieldPlacement);
+            _placementUpdate.Pause();
+
             _listView.RegisterCallback<GeometryChangedEvent>(OnListGeometryChanged);
 
-            // 헤더 요소가 포인터를 캡처해 전파를 끊더라도 놓치지 않도록 ListView에서 트리클로 먼저 받는다.
+            // 우클릭 메뉴가 쓸 열을 메뉴 매니퓰레이터보다 먼저 기억해 두도록 트리클로 받는다.
+            _header.RegisterCallback<PointerDownEvent>(OnHeaderPointerDown, TrickleDown.TrickleDown);
+            _headerMenuManipulator = new ContextualMenuManipulator(BuildColumnHeaderContextMenu);
+            _header.AddManipulator(_headerMenuManipulator);
+
             _listView.RegisterCallback<PointerDownEvent>(OnGridPointerDown, TrickleDown.TrickleDown);
             _listView.RegisterCallback<PointerMoveEvent>(OnGridPointerMove, TrickleDown.TrickleDown);
             _listView.RegisterCallback<PointerUpEvent>(OnGridPointerUp, TrickleDown.TrickleDown);
@@ -203,7 +250,7 @@ namespace NKStudio.TabularEditor.Window
             }
 
             CancelEdit();
-            RebuildColumns();
+            RebuildColumnLayout();
             RebuildItems();
             Selection.SetActive(new CellCoord(MinRow, 0));
         }
@@ -219,7 +266,7 @@ namespace NKStudio.TabularEditor.Window
 
             UseFirstRowAsHeader = useHeader;
             CancelEdit();
-            RebuildColumns();
+            RebuildColumnLayout();
             RebuildItems();
             Selection.Clamp(MinRow, _document?.RowCount ?? 1, _document?.ColumnCount ?? 1);
         }
@@ -464,17 +511,11 @@ namespace NKStudio.TabularEditor.Window
             _listView.UnregisterCallback<PointerDownEvent>(OnGridPointerDown, TrickleDown.TrickleDown);
             _listView.UnregisterCallback<PointerMoveEvent>(OnGridPointerMove, TrickleDown.TrickleDown);
             _listView.UnregisterCallback<PointerUpEvent>(OnGridPointerUp, TrickleDown.TrickleDown);
-
-            if (_columnHeaderContainer != null)
-            {
-                if (_columnHeaderManipulator != null)
-                {
-                    _columnHeaderContainer.RemoveManipulator(_columnHeaderManipulator);
-                    _columnHeaderManipulator = null;
-                }
-
-                _columnHeaderContainer = null;
-            }
+            _header.UnregisterCallback<PointerDownEvent>(OnHeaderPointerDown, TrickleDown.TrickleDown);
+            _header.RemoveManipulator(_headerMenuManipulator);
+            _scrollView.horizontalScroller.valueChanged -= OnHorizontalScrollChanged;
+            _scrollView.verticalScroller.valueChanged -= OnVerticalScrollChanged;
+            _placementUpdate.Pause();
 
             if (_document != null)
             {
@@ -488,53 +529,45 @@ namespace NKStudio.TabularEditor.Window
 
         private void OnListGeometryChanged(GeometryChangedEvent evt)
         {
-            _scrollView ??= _listView.Q<ScrollView>();
-            TryAttachColumnHeaderMenu();
+            // 창 크기가 바뀌면 보이는 열 범위도 달라진다.
+            if (UpdateVisibleColumnRange())
+                RebindVisibleColumns();
 
-            // 열이 다시 만들어지면 헤더 요소도 새로 생기므로 강조를 다시 입힌다.
-            RefreshColumnHeaderStates();
             UpdateEditFieldPlacement();
         }
 
-        // 열 헤더는 MultiColumnListView 내부에서 나중에 만들어지므로 지연 조회한다.
-        private void TryAttachColumnHeaderMenu()
+        private void OnHorizontalScrollChanged(float scrollX)
         {
-            if (_columnHeaderContainer != null)
-                return;
+            _headerContent.style.left = -scrollX;
 
-            _columnHeaderContainer = _listView.Q<VisualElement>(
-                className: UnityColumnHeaderContainerClassName);
+            if (UpdateVisibleColumnRange())
+                RebindVisibleColumns();
 
-            if (_columnHeaderContainer == null)
-                return;
-
-            _columnHeaderManipulator = new ContextualMenuManipulator(BuildColumnHeaderContextMenu);
-            _columnHeaderContainer.AddManipulator(_columnHeaderManipulator);
-
+            _placementUpdate.ExecuteLater(0);
         }
 
-        // PointerUp은 헤더가 포인터를 캡처해 삼키므로 여기까지 오지 않는다. PointerDown에서 바로 선택한다.
-        private void OnGridPointerDown(PointerDownEvent evt)
+        private void OnVerticalScrollChanged(float scrollY)
+        {
+            _placementUpdate.ExecuteLater(0);
+        }
+
+        // 열 제목을 누르면 스프레드시트처럼 그 열 전체를 선택한다.
+        private void OnHeaderPointerDown(PointerDownEvent evt)
         {
             _pressedColumnIndex = TryGetHeaderColumnAt(evt.position, out int columnIndex)
                 ? columnIndex
                 : -1;
 
             // 우클릭은 선택을 바꾸지 않고 컨텍스트 메뉴가 쓸 열만 기억한다.
-            if (evt.button != 0)
+            if (evt.button != 0 || _pressedColumnIndex < 0)
                 return;
 
-            // 셀 위에서 눌렀으면 드래그로 범위를 넓힐 준비를 한다.
-            // 더블클릭은 편집 진입이므로 드래그를 걸지 않는다. 걸어두면 손떨림 한 번에 편집이 닫힌다.
-            if (_pressedColumnIndex < 0)
-            {
-                _isDragSelecting = evt.clickCount < 2 && TryGetCellAt(evt.position, out _);
+            // 경계의 폭 조절 손잡이는 자기 콜백에서 드래그를 처리한다.
+            if (evt.target is VisualElement target && target.ClassListContains(ColumnResizerClassName))
                 return;
-            }
 
-            // 열 경계 근처는 폭 조절 영역이라 선택에서 제외한다.
-            if (IsNearColumnEdge(evt.position, _pressedColumnIndex))
-                return;
+            // 헤더는 포커스를 받지 않는 요소라, 그냥 두면 포커스 컨트롤러가 편집 필드의 포커스를 거둬 간다.
+            _listView.focusController?.IgnoreEvent(evt);
 
             CommitEdit();
 
@@ -546,18 +579,68 @@ namespace NKStudio.TabularEditor.Window
             FocusGrid();
         }
 
-        private bool IsNearColumnEdge(Vector2 position, int columnIndex)
+        private void OnGridPointerDown(PointerDownEvent evt)
         {
-            List<VisualElement> headers = GetColumnHeaders();
-            int headerIndex = columnIndex + 1;
+            if (evt.button != 0)
+                return;
 
-            if (headerIndex < 0 || headerIndex >= headers.Count)
-                return false;
+            // 셀 위에서 눌렀으면 드래그로 범위를 넓힐 준비를 한다.
+            // 더블클릭은 편집 진입이므로 드래그를 걸지 않는다. 걸어두면 손떨림 한 번에 편집이 닫힌다.
+            _isDragSelecting = evt.clickCount < 2 && TryGetCellAt(evt.position, out _);
+        }
 
-            Rect bound = headers[headerIndex].worldBound;
+        private void OnResizerPointerDown(PointerDownEvent evt)
+        {
+            if (evt.button != 0)
+                return;
 
-            return position.x - bound.xMin <= ColumnResizeEdgeWidth
-                || bound.xMax - position.x <= ColumnResizeEdgeWidth;
+            if (evt.currentTarget is not VisualElement resizer)
+                return;
+
+            if (resizer.parent?.userData is not TableCellBinding binding || binding.Column < 0)
+                return;
+
+            _resizingColumn = binding.Column;
+            _resizeStartX = evt.position.x;
+            _resizeStartWidth = _columnWidths[binding.Column];
+
+            resizer.CapturePointer(evt.pointerId);
+            evt.StopPropagation();
+            _listView.focusController?.IgnoreEvent(evt);
+        }
+
+        private void OnResizerPointerMove(PointerMoveEvent evt)
+        {
+            if (_resizingColumn < 0)
+                return;
+
+            if (evt.currentTarget is not VisualElement resizer || !resizer.HasPointerCapture(evt.pointerId))
+                return;
+
+            float width = Math.Max(MinColumnWidth, _resizeStartWidth + evt.position.x - _resizeStartX);
+            SetColumnWidth(_resizingColumn, width);
+        }
+
+        private void OnResizerPointerUp(PointerUpEvent evt)
+        {
+            if (evt.currentTarget is VisualElement resizer && resizer.HasPointerCapture(evt.pointerId))
+                resizer.ReleasePointer(evt.pointerId);
+
+            _resizingColumn = -1;
+        }
+
+        private void OnResizerPointerCaptureOut(PointerCaptureOutEvent evt)
+        {
+            _resizingColumn = -1;
+        }
+
+        private void SetColumnWidth(int columnIndex, float width)
+        {
+            _columnWidths[columnIndex] = width;
+            UpdateColumnLefts();
+            UpdateVisibleColumnRange();
+            RebindVisibleColumns();
+            _placementUpdate.ExecuteLater(0);
         }
 
         // 드래그로 셀 범위를 넓힌다. 누른 셀이 anchor로 남고 지나가는 셀이 focus가 된다.
@@ -620,28 +703,25 @@ namespace NKStudio.TabularEditor.Window
             return hit;
         }
 
-        // evt.target이나 포인터 캡처에 기대지 않고 좌표만으로 어떤 열 제목을 눌렀는지 판별한다.
-        // MultiColumnListView 내부 이벤트 처리 방식이 바뀌어도 영향을 받지 않는다.
+        // evt.target에 기대지 않고 좌표만으로 어떤 열 제목을 눌렀는지 판별한다.
+        // 화면에 보이는 열 제목만 존재하므로 순회 비용은 작다.
         private bool TryGetHeaderColumnAt(Vector2 position, out int columnIndex)
         {
             columnIndex = -1;
 
-            if (_columnHeaderContainer == null)
+            if (!_header.worldBound.Contains(position))
                 return false;
 
-            if (!_columnHeaderContainer.worldBound.Contains(position))
-                return false;
-
-            List<VisualElement> headers = GetColumnHeaders();
-
-            for (int index = 0; index < headers.Count; index++)
+            foreach (VisualElement headerCell in _headerCells)
             {
-                if (!headers[index].worldBound.Contains(position))
+                if (headerCell.userData is not TableCellBinding binding || binding.Column < 0)
                     continue;
 
-                // 0번은 행 번호 거터 헤더라 데이터 열이 아니다.
-                columnIndex = index - 1;
-                return columnIndex >= 0;
+                if (!headerCell.worldBound.Contains(position))
+                    continue;
+
+                columnIndex = binding.Column;
+                return true;
             }
 
             return false;
@@ -653,8 +733,8 @@ namespace NKStudio.TabularEditor.Window
 
             if (itemIndex < 0)
             {
-                // 헤더 행이 바뀌면 열 제목을 다시 만든다.
-                RebuildColumns();
+                // 헤더 행이 바뀌면 열 제목만 다시 채운다.
+                BindHeaderCells();
                 return;
             }
 
@@ -664,7 +744,7 @@ namespace NKStudio.TabularEditor.Window
 
         private void OnDocumentStructureChanged()
         {
-            RebuildColumns();
+            RebuildColumnLayout();
             RebuildItems();
             Selection.Clamp(MinRow, _document?.RowCount ?? 1, _document?.ColumnCount ?? 1);
         }
@@ -687,64 +767,265 @@ namespace NKStudio.TabularEditor.Window
             _listView.RefreshItems();
         }
 
-        private void RebuildColumns()
+        // 열 개수가 바뀌었을 수 있으므로 폭 목록을 맞추고 보이는 열을 처음부터 다시 채운다.
+        private void RebuildColumnLayout()
         {
-            SaveColumnWidths();
-            _listView.columns.Clear();
+            SyncColumnWidths();
+            UpdateColumnLefts();
+            UpdateVisibleColumnRange();
+            RebindVisibleColumns();
+        }
 
-            if (_document == null)
-                return;
+        // 폭은 열 인덱스 기준으로 유지한다. 늘어난 열은 기본 폭, 줄어든 만큼은 뒤에서 버린다.
+        private void SyncColumnWidths()
+        {
+            int columnCount = _document?.ColumnCount ?? 0;
 
-            Column rowNumberColumn = new();
-            rowNumberColumn.name = "table-editor-row-number";
-            rowNumberColumn.title = "#";
-            rowNumberColumn.width = RowNumberColumnWidth;
-            rowNumberColumn.minWidth = 32f;
-            rowNumberColumn.resizable = false;
-            rowNumberColumn.sortable = false;
-            rowNumberColumn.optional = false;
-            rowNumberColumn.makeCell = MakeRowNumberCell;
-            rowNumberColumn.bindCell = BindRowNumberCell;
-            _listView.columns.Add(rowNumberColumn);
+            while (_columnWidths.Count < columnCount)
+                _columnWidths.Add(DefaultColumnWidth);
 
-            for (int columnIndex = 0; columnIndex < _document.ColumnCount; columnIndex++)
+            if (_columnWidths.Count > columnCount)
+                _columnWidths.RemoveRange(columnCount, _columnWidths.Count - columnCount);
+        }
+
+        private void UpdateColumnLefts()
+        {
+            _columnLefts.Clear();
+            _columnLefts.Add(0f);
+
+            float left = 0f;
+
+            foreach (float width in _columnWidths)
             {
-                int captured = columnIndex;
-
-                Column column = new();
-                column.name = $"table-editor-column-{columnIndex}";
-                column.title = GetColumnTitle(columnIndex);
-                column.width = GetStoredColumnWidth(columnIndex);
-                column.minWidth = 40f;
-                column.resizable = true;
-                column.sortable = false;
-                column.optional = false;
-                column.makeCell = MakeCell;
-                column.bindCell = (element, itemIndex) => BindCell(element, itemIndex, captured);
-                _listView.columns.Add(column);
+                left += width;
+                _columnLefts.Add(left);
             }
         }
 
-        private void SaveColumnWidths()
+        // 행 번호 거터까지 포함한 한 행의 전체 폭이다. 가로 스크롤 범위가 된다.
+        private float ContentWidth => RowNumberColumnWidth + _columnLefts[_columnLefts.Count - 1];
+
+        // 현재 스크롤 위치에서 보이는 열 범위를 다시 계산한다. 범위가 바뀌었으면 true입니다.
+        private bool UpdateVisibleColumnRange()
         {
-            if (_listView.columns.Count <= 1)
+            int first = 0;
+            int last = -1;
+
+            if (_columnWidths.Count > 0)
+            {
+                float dataLeft = _scrollView.scrollOffset.x - RowNumberColumnWidth;
+                float dataRight = dataLeft + GetViewportWidth();
+
+                first = Math.Max(0, FindColumnAt(dataLeft) - OffscreenColumnBuffer);
+                last = Math.Min(_columnWidths.Count - 1, FindColumnAt(dataRight) + OffscreenColumnBuffer);
+            }
+
+            if (first == _firstVisibleColumn && last == _lastVisibleColumn)
+                return false;
+
+            _firstVisibleColumn = first;
+            _lastVisibleColumn = last;
+            return true;
+        }
+
+        // 헤더는 세로 스크롤바 자리까지 덮으므로 둘 중 넓은 쪽을 기준으로 잡아야 헤더 끝이 비지 않는다.
+        private float GetViewportWidth()
+        {
+            float listWidth = _scrollView.contentViewport.resolvedStyle.width;
+            float headerWidth = _header.resolvedStyle.width;
+            float width = Math.Max(float.IsNaN(listWidth) ? 0f : listWidth, float.IsNaN(headerWidth) ? 0f : headerWidth);
+
+            return width > 0f ? width : FallbackViewportWidth;
+        }
+
+        // x 위치(거터 제외)를 덮는 열 인덱스를 이진 탐색으로 찾는다. 범위 밖이면 첫 열/마지막 열로 붙인다.
+        private int FindColumnAt(float x)
+        {
+            int low = 0;
+            int high = _columnWidths.Count - 1;
+
+            while (low < high)
+            {
+                int mid = (low + high + 1) / 2;
+
+                if (_columnLefts[mid] <= x)
+                    low = mid;
+                else
+                    high = mid - 1;
+            }
+
+            return low;
+        }
+
+        private void RebindVisibleColumns()
+        {
+            foreach (TableRowElement row in _boundRows)
+                BindRowCells(row);
+
+            BindHeaderCells();
+        }
+
+        private VisualElement MakeCornerHeaderCell()
+        {
+            VisualElement corner = new();
+            corner.AddToClassList(ColumnHeaderClassName);
+            corner.AddToClassList(ColumnHeaderCornerClassName);
+            corner.style.width = RowNumberColumnWidth;
+
+            Label title = new("#");
+            title.AddToClassList(ColumnHeaderTitleClassName);
+            title.pickingMode = PickingMode.Ignore;
+            corner.Add(title);
+
+            return corner;
+        }
+
+        private VisualElement MakeHeaderCell()
+        {
+            VisualElement headerCell = new();
+            headerCell.AddToClassList(ColumnHeaderClassName);
+            headerCell.userData = new TableCellBinding();
+
+            Label title = new();
+            title.AddToClassList(ColumnHeaderTitleClassName);
+            title.pickingMode = PickingMode.Ignore;
+            headerCell.Add(title);
+
+            VisualElement resizer = new();
+            resizer.AddToClassList(ColumnResizerClassName);
+            resizer.RegisterCallback<PointerDownEvent>(OnResizerPointerDown);
+            resizer.RegisterCallback<PointerMoveEvent>(OnResizerPointerMove);
+            resizer.RegisterCallback<PointerUpEvent>(OnResizerPointerUp);
+            resizer.RegisterCallback<PointerCaptureOutEvent>(OnResizerPointerCaptureOut);
+            headerCell.Add(resizer);
+
+            return headerCell;
+        }
+
+        private void BindHeaderCells()
+        {
+            _headerContent.style.width = ContentWidth;
+
+            int visibleCount = _lastVisibleColumn - _firstVisibleColumn + 1;
+
+            while (_headerCells.Count < visibleCount)
+            {
+                VisualElement created = MakeHeaderCell();
+                _headerCells.Add(created);
+                _headerContent.Add(created);
+            }
+
+            for (int index = 0; index < _headerCells.Count; index++)
+            {
+                VisualElement headerCell = _headerCells[index];
+                TableCellBinding binding = (TableCellBinding)headerCell.userData;
+
+                if (index >= visibleCount)
+                {
+                    binding.Column = -1;
+                    headerCell.style.display = DisplayStyle.None;
+                    continue;
+                }
+
+                int columnIndex = _firstVisibleColumn + index;
+                binding.Column = columnIndex;
+
+                headerCell.style.display = DisplayStyle.Flex;
+                headerCell.style.left = RowNumberColumnWidth + _columnLefts[columnIndex];
+                headerCell.style.width = _columnWidths[columnIndex];
+                headerCell.Q<Label>(className: ColumnHeaderTitleClassName).text = GetColumnTitle(columnIndex);
+            }
+
+            RefreshColumnHeaderStates();
+        }
+
+        private VisualElement MakeRow()
+        {
+            TableRowElement row = new();
+            row.AddToClassList(RowClassName);
+
+            row.RowNumberCell = MakeRowNumberCell();
+            row.Add(row.RowNumberCell);
+
+            return row;
+        }
+
+        private void BindRow(VisualElement element, int itemIndex)
+        {
+            if (element is not TableRowElement row)
                 return;
 
-            _columnWidths.Clear();
+            row.ItemIndex = itemIndex;
+            _boundRows.Add(row);
 
-            for (int index = 1; index < _listView.columns.Count; index++)
+            BindRowNumberCell(row.RowNumberCell, itemIndex);
+            BindRowCells(row);
+        }
+
+        // 풀로 돌아간 행의 셀이 좌표 판별에 걸리지 않도록 바인딩을 비운다.
+        private void UnbindRow(VisualElement element, int itemIndex)
+        {
+            if (element is not TableRowElement row)
+                return;
+
+            row.ItemIndex = -1;
+            _boundRows.Remove(row);
+
+            if (row.RowNumberCell.userData is TableCellBinding rowNumberBinding)
+                rowNumberBinding.Row = -1;
+
+            foreach (VisualElement cell in row.Cells)
             {
-                float width = _listView.columns[index].width.value;
-                _columnWidths.Add(width > 0f ? width : DefaultColumnWidth);
+                TableCellBinding binding = (TableCellBinding)cell.userData;
+                binding.Row = -1;
+                binding.Column = -1;
             }
         }
 
-        private float GetStoredColumnWidth(int columnIndex)
+        // 보이는 열 범위만큼만 셀을 두고 각 셀을 해당 열 위치에 놓는다. 남는 셀은 숨겨 다음 스크롤 때 재사용한다.
+        private void BindRowCells(TableRowElement row)
         {
-            if (columnIndex >= 0 && columnIndex < _columnWidths.Count)
-                return _columnWidths[columnIndex];
+            row.style.width = ContentWidth;
 
-            return DefaultColumnWidth;
+            int documentRow = row.ItemIndex + HeaderOffset;
+            int visibleCount = _document != null ? _lastVisibleColumn - _firstVisibleColumn + 1 : 0;
+
+            while (row.Cells.Count < visibleCount)
+            {
+                VisualElement created = MakeCell();
+                row.Cells.Add(created);
+                row.Add(created);
+            }
+
+            for (int index = 0; index < row.Cells.Count; index++)
+            {
+                VisualElement cell = row.Cells[index];
+                TableCellBinding binding = (TableCellBinding)cell.userData;
+
+                if (index >= visibleCount)
+                {
+                    binding.Row = -1;
+                    binding.Column = -1;
+                    cell.style.display = DisplayStyle.None;
+                    continue;
+                }
+
+                int columnIndex = _firstVisibleColumn + index;
+                binding.Row = documentRow;
+                binding.Column = columnIndex;
+
+                cell.style.display = DisplayStyle.Flex;
+                cell.style.left = RowNumberColumnWidth + _columnLefts[columnIndex];
+                cell.style.width = _columnWidths[columnIndex];
+
+                Label label = cell.Q<Label>(className: CellLabelClassName);
+
+                if (label != null)
+                    label.text = _document.GetCell(documentRow, columnIndex);
+
+                // 셀 요소는 재활용되므로 선택 상태를 매번 모델에서 다시 적용해야 한다.
+                UpdateCellState(cell);
+            }
         }
 
         private string GetColumnTitle(int columnIndex)
@@ -784,6 +1065,7 @@ namespace NKStudio.TabularEditor.Window
         {
             VisualElement cell = new();
             cell.AddToClassList(RowNumberClassName);
+            cell.style.width = RowNumberColumnWidth;
             cell.userData = new TableCellBinding();
 
             Label label = new();
@@ -857,24 +1139,6 @@ namespace NKStudio.TabularEditor.Window
             cell.AddManipulator(new ContextualMenuManipulator(BuildCellContextMenu));
 
             return cell;
-        }
-
-        private void BindCell(VisualElement element, int itemIndex, int columnIndex)
-        {
-            if (element.userData is not TableCellBinding binding)
-                return;
-
-            int row = itemIndex + HeaderOffset;
-            binding.Row = row;
-            binding.Column = columnIndex;
-
-            Label label = element.Q<Label>(className: CellLabelClassName);
-
-            if (label != null)
-                label.text = _document != null ? _document.GetCell(row, columnIndex) : string.Empty;
-
-            // 셀 요소는 재활용되므로 선택 상태를 매번 모델에서 다시 적용해야 한다.
-            UpdateCellState(element);
         }
 
         private void OnCellPointerDown(PointerDownEvent evt)
@@ -970,16 +1234,6 @@ namespace NKStudio.TabularEditor.Window
             AppendColumnActions(evt.menu);
             evt.menu.AppendSeparator();
             AppendClipboardActions(evt.menu);
-        }
-
-        private List<VisualElement> GetColumnHeaders()
-        {
-            if (_columnHeaderContainer == null)
-                return new List<VisualElement>();
-
-            return _columnHeaderContainer
-                .Query<VisualElement>(className: UnityColumnHeaderClassName)
-                .ToList();
         }
 
         private void AppendRowActions(DropdownMenu menu)
@@ -1082,22 +1336,16 @@ namespace NKStudio.TabularEditor.Window
         // 열을 선택했다는 사실이 보이도록 헤더에 강조 클래스를 토글한다.
         private void RefreshColumnHeaderStates()
         {
-            if (_columnHeaderContainer == null)
-                return;
-
-            List<VisualElement> headers = GetColumnHeaders();
-
-            for (int index = 0; index < headers.Count; index++)
+            foreach (VisualElement headerCell in _headerCells)
             {
-                // 0번은 행 번호 거터 헤더라 데이터 열이 아니다.
-                int columnIndex = index - 1;
+                if (headerCell.userData is not TableCellBinding binding || binding.Column < 0)
+                    continue;
 
-                bool isSelected = columnIndex >= 0
-                    && Selection.Kind == CellSelectionKind.Columns
-                    && columnIndex >= Selection.MinColumn
-                    && columnIndex <= Selection.MaxColumn;
+                bool isSelected = Selection.Kind == CellSelectionKind.Columns
+                    && binding.Column >= Selection.MinColumn
+                    && binding.Column <= Selection.MaxColumn;
 
-                headers[index].EnableInClassList(ColumnHeaderSelectedClassName, isSelected);
+                headerCell.EnableInClassList(ColumnHeaderSelectedClassName, isSelected);
             }
         }
 
@@ -1230,21 +1478,19 @@ namespace NKStudio.TabularEditor.Window
             return found;
         }
 
-        // MultiColumnListView는 가로 스크롤 API를 제공하지 않으므로 누적 폭으로 직접 계산한다.
+        // ListView는 가로 스크롤 API를 제공하지 않으므로 누적 폭으로 직접 계산한다.
         private void ScrollToColumn(int columnIndex)
         {
-            _scrollView ??= _listView.Q<ScrollView>();
+            ScrollToColumn(columnIndex, true);
+        }
 
-            if (_scrollView == null || _listView.columns.Count <= columnIndex + 1)
+        private void ScrollToColumn(int columnIndex, bool retryAfterLayout)
+        {
+            if (columnIndex < 0 || columnIndex >= _columnWidths.Count)
                 return;
 
-            float left = 0f;
-
-            for (int index = 0; index <= columnIndex; index++)
-                left += GetResolvedColumnWidth(index);
-
-            float width = GetResolvedColumnWidth(columnIndex + 1);
-            float right = left + width;
+            float left = RowNumberColumnWidth + _columnLefts[columnIndex];
+            float right = left + _columnWidths[columnIndex];
             float viewportWidth = _scrollView.contentViewport.resolvedStyle.width;
 
             if (float.IsNaN(viewportWidth) || viewportWidth <= 0f)
@@ -1259,17 +1505,21 @@ namespace NKStudio.TabularEditor.Window
             else
                 return;
 
+            // 열을 막 추가한 직후에는 스크롤 범위가 다음 레이아웃에서야 늘어나 offset이 잘린다. 레이아웃 뒤에 한 번 더 맞춘다.
+            if (retryAfterLayout && offset.x > _scrollView.horizontalScroller.highValue)
+                _listView.schedule.Execute(() => ScrollToColumn(columnIndex, false));
+
             _scrollView.scrollOffset = offset;
         }
 
-        private float GetResolvedColumnWidth(int columnIndex)
+        // ListView가 재활용하는 한 행입니다. 행 번호 셀은 고정이고, 데이터 셀은 보이는 열 수만큼만 둔다.
+        private sealed class TableRowElement : VisualElement
         {
-            if (columnIndex < 0 || columnIndex >= _listView.columns.Count)
-                return 0f;
+            public VisualElement RowNumberCell { get; set; }
 
-            float width = _listView.columns[columnIndex].width.value;
+            public List<VisualElement> Cells { get; } = new();
 
-            return width > 0f ? width : DefaultColumnWidth;
+            public int ItemIndex { get; set; } = -1;
         }
     }
 }
