@@ -1,4 +1,6 @@
+using System;
 using System.IO;
+using System.Threading.Tasks;
 using NKStudio.TabularEditor.Commands;
 using NKStudio.TabularEditor.Data;
 using NKStudio.TabularEditor.Selection;
@@ -17,6 +19,9 @@ namespace NKStudio.TabularEditor.Window
     {
         private const string UxmlPath =
             "Packages/com.nkstudio.unitytable/Editor/Window/TableEditorWindow.uxml";
+
+        // 작은 파일은 한 프레임 안에 끝나므로, 그보다 오래 걸릴 때만 안내를 띄워 깜박임을 막는다.
+        private const long LoadingOverlayDelayMs = 150;
 
         [SerializeField]
         private string assetPath = string.Empty;
@@ -42,6 +47,12 @@ namespace NKStudio.TabularEditor.Window
         private Label _stateLabel;
 
         private string _loadedFileHash = string.Empty;
+
+        // 불러오기를 시작할 때마다 올린다. 끝난 작업의 번호가 다르면 그 사이 다른 파일을 열었다는 뜻이라 결과를 버린다.
+        private int _loadVersion;
+        private bool _isLoading;
+        private Label _loadingOverlay;
+        private IVisualElementScheduledItem _loadingOverlayReveal;
 
         /// <summary>
         /// 지정한 파일을 테이블 에디터로 엽니다. 이미 같은 파일을 연 창이 있으면 그 창을 활성화합니다.
@@ -124,7 +135,16 @@ namespace NKStudio.TabularEditor.Window
             if (_headerToggle != null)
                 _headerToggle.SetValueWithoutNotify(useFirstRowAsHeader);
 
-            LoadDocument(assetPath);
+            CreateLoadingOverlay(gridContainer);
+
+            // Open()이 CreateGUI보다 먼저 불러오기를 시작하므로, 이미 진행 중이거나 끝났으면 다시 읽지 않는다.
+            // 도메인 리로드 뒤에는 문서가 비어 있으므로 여기서 다시 읽는다.
+            if (_isLoading)
+                ShowLoadingOverlayLater();
+            else if (_document != null)
+                BindDocumentToViews();
+            else
+                LoadDocument(assetPath);
         }
 
         private void OnDisable()
@@ -181,26 +201,127 @@ namespace NKStudio.TabularEditor.Window
         }
 
         /// <summary>
-        /// 지정한 파일을 읽어 편집 대상으로 설정합니다.
+        /// 지정한 파일을 읽어 편집 대상으로 설정합니다. 파일 읽기와 파싱은 백그라운드 스레드에서 하므로
+        /// 이 메서드는 바로 반환되고, 문서는 다 읽은 뒤 메인 스레드에서 적용된다.
         /// </summary>
         /// <param name="projectRelativePath">읽을 파일의 프로젝트 상대 경로입니다.</param>
         public void LoadDocument(string projectRelativePath)
         {
             assetPath = projectRelativePath ?? string.Empty;
+            int version = ++_loadVersion;
 
-            _document = string.IsNullOrEmpty(assetPath)
-                ? CreateEmptyDocument()
-                : TableDocumentIO.Load(assetPath);
+            if (string.IsNullOrEmpty(assetPath))
+            {
+                ApplyLoadedDocument(CreateEmptyDocument(), string.Empty);
+                return;
+            }
 
-            _loadedFileHash = TableDocumentIO.ComputeFileHash(assetPath);
+            BeginLoading();
+            _ = LoadDocumentInBackground(assetPath, version);
+        }
 
+        // await 뒤의 코드는 Unity 동기화 컨텍스트를 통해 메인 스레드에서 이어진다.
+        private async Task LoadDocumentInBackground(string path, int version)
+        {
+            TableDocument document;
+            string fileHash;
+
+            try
+            {
+                (document, fileHash) = await Task.Run(() =>
+                {
+                    TableDocument loaded = TableDocumentIO.Load(path, out string hash);
+                    return (loaded, hash);
+                });
+            }
+            catch (Exception exception)
+            {
+                if (this == null || version != _loadVersion)
+                    return;
+
+                Debug.LogException(exception);
+                EndLoading();
+                ShowLoadingMessage($"파일을 불러오지 못했습니다.\n{path}");
+                return;
+            }
+
+            // 그 사이 창이 닫혔거나 다른 파일을 열었으면 이 결과는 버린다.
+            if (this == null || version != _loadVersion)
+                return;
+
+            ApplyLoadedDocument(document, fileHash);
+        }
+
+        // 불러오는 동안에는 문서를 비워 둔다. 저장·편집·Undo가 모두 문서가 없으면 아무 것도 하지 않으므로,
+        // 다 읽기 전에 Ctrl+S를 눌러 빈 내용으로 파일을 덮어쓰는 일이 생기지 않는다.
+        private void BeginLoading()
+        {
+            _isLoading = true;
+            _document = null;
             _commandStack.Clear();
+
+            UpdateTitle();
+            UpdateDirtyState();
+            ShowLoadingOverlayLater();
+        }
+
+        private void EndLoading()
+        {
+            _isLoading = false;
+            _loadingOverlayReveal?.Pause();
+
+            if (_loadingOverlay != null)
+                _loadingOverlay.style.display = DisplayStyle.None;
+        }
+
+        private void ApplyLoadedDocument(TableDocument document, string fileHash)
+        {
+            EndLoading();
+
+            _document = document;
+            _loadedFileHash = fileHash;
+            _commandStack.Clear();
+
+            BindDocumentToViews();
+        }
+
+        private void BindDocumentToViews()
+        {
             _gridView?.SetDocument(_document);
             _searchController?.Refresh();
 
             UpdateTitle();
             UpdateDirtyState();
             UpdateStatusBar();
+        }
+
+        // 그리드 위를 덮어 불러오는 동안 셀을 누르지 못하게 한다.
+        private void CreateLoadingOverlay(VisualElement gridContainer)
+        {
+            _loadingOverlay = new Label();
+            _loadingOverlay.AddToClassList("table-editor__loading-overlay");
+            _loadingOverlay.style.display = DisplayStyle.None;
+            gridContainer.Add(_loadingOverlay);
+        }
+
+        private void ShowLoadingOverlayLater()
+        {
+            if (_loadingOverlay == null)
+                return;
+
+            _loadingOverlayReveal?.Pause();
+            _loadingOverlayReveal = _loadingOverlay.schedule
+                .Execute(() => ShowLoadingMessage("불러오는 중…"))
+                .StartingIn(LoadingOverlayDelayMs);
+        }
+
+        private void ShowLoadingMessage(string message)
+        {
+            if (_loadingOverlay == null)
+                return;
+
+            _loadingOverlay.text = message;
+            _loadingOverlay.style.display = DisplayStyle.Flex;
         }
 
         private static TableDocument CreateEmptyDocument()
@@ -324,7 +445,11 @@ namespace NKStudio.TabularEditor.Window
 
         private void SaveDocument()
         {
-            if (_document == null || string.IsNullOrEmpty(assetPath))
+            // 불러오는 중이거나 불러오지 못한 상태다. 저장할 내용이 없다.
+            if (_document == null)
+                return;
+
+            if (string.IsNullOrEmpty(assetPath))
             {
                 EditorUtility.DisplayDialog(
                     "테이블 저장",

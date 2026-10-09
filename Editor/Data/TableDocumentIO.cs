@@ -35,6 +35,20 @@ namespace NKStudio.TabularEditor.Data
         /// <returns>생성된 문서입니다. 파일이 없으면 빈 문서를 반환합니다.</returns>
         public static TableDocument Load(string projectRelativePath)
         {
+            return Load(projectRelativePath, out _);
+        }
+
+        /// <summary>
+        /// 파일을 읽어 테이블 문서를 만들고, 읽은 바이트의 해시도 함께 계산합니다.
+        /// Unity API를 쓰지 않으므로 백그라운드 스레드에서 호출해도 된다.
+        /// </summary>
+        /// <param name="projectRelativePath">읽을 파일의 프로젝트 상대 경로입니다.</param>
+        /// <param name="fileHash">읽은 파일 내용의 해시입니다. 파일이 없으면 빈 문자열입니다.</param>
+        /// <returns>생성된 문서입니다. 파일이 없으면 빈 문서를 반환합니다.</returns>
+        public static TableDocument Load(string projectRelativePath, out string fileHash)
+        {
+            fileHash = string.Empty;
+
             TableDocument document = new();
             document.AssetPath = projectRelativePath;
 
@@ -50,6 +64,10 @@ namespace NKStudio.TabularEditor.Data
             }
 
             byte[] bytes = File.ReadAllBytes(fullPath);
+
+            // 저장 시 외부 변경 감지의 기준이 되므로, 다시 읽지 않고 파싱한 바로 그 바이트로 계산한다.
+            fileHash = ComputeHash(bytes);
+
             TableFileOptions options = new();
             options.Encoding = DetectEncoding(bytes, out int preambleLength);
 
@@ -127,10 +145,13 @@ namespace NKStudio.TabularEditor.Data
             if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
                 return string.Empty;
 
-            using MD5 md5 = MD5.Create();
-            byte[] hash = md5.ComputeHash(File.ReadAllBytes(fullPath));
+            return ComputeHash(File.ReadAllBytes(fullPath));
+        }
 
-            return Convert.ToBase64String(hash);
+        private static string ComputeHash(byte[] bytes)
+        {
+            using MD5 md5 = MD5.Create();
+            return Convert.ToBase64String(md5.ComputeHash(bytes));
         }
 
         /// <summary>
