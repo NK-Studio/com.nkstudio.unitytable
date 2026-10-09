@@ -24,7 +24,7 @@ https://github.com/NK-Studio/com.nkstudio.unitytable.git
 
 프로젝트 창에서 `.csv` 또는 `.tsv` 파일을 더블클릭하면 열립니다.
 파일 없이 열려면 `Window > NKStudio > Tabular Editor`를 사용합니다.
-새 CSV 파일은 프로젝트 창의 `Create > Scripting > CSV 파일`로 만듭니다.
+새 CSV 파일은 프로젝트 창의 `Create > Scripting > CSV File`로 만듭니다.
 
 ## 단축키
 
