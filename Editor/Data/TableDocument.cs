@@ -264,6 +264,40 @@ namespace NKStudio.TabularEditor.Data
         }
 
         /// <summary>
+        /// firstRow부터 이어지는 행들의 순서를 바꿉니다. 행 참조만 옮기므로 셀 문자열을 만들지 않습니다.
+        /// </summary>
+        /// <param name="firstRow">순서를 바꿀 첫 행입니다. 그 앞의 행(헤더 등)은 그대로 둡니다.</param>
+        /// <param name="order">order[i]는 firstRow 기준으로 몇 번째 행이 i번째 자리로 오는지입니다. 순열이어야 합니다.</param>
+        public void ReorderRows(int firstRow, IReadOnlyList<int> order)
+        {
+            if (order == null || order.Count == 0)
+                return;
+
+            if (firstRow < 0 || firstRow + order.Count > _rows.Count)
+                throw new ArgumentOutOfRangeException(nameof(order), "정렬할 범위가 문서 행 범위를 벗어났습니다.");
+
+            // 순열이 아니면 행이 중복되거나 사라지므로, 문서를 건드리기 전에 막는다.
+            bool[] used = new bool[order.Count];
+            List<CellSlot>[] reordered = new List<CellSlot>[order.Count];
+
+            for (int index = 0; index < order.Count; index++)
+            {
+                int source = order[index];
+
+                if (source < 0 || source >= order.Count || used[source])
+                    throw new ArgumentException("행 순서가 순열이 아닙니다.", nameof(order));
+
+                used[source] = true;
+                reordered[index] = _rows[firstRow + source];
+            }
+
+            for (int index = 0; index < reordered.Length; index++)
+                _rows[firstRow + index] = reordered[index];
+
+            StructureChanged?.Invoke();
+        }
+
+        /// <summary>
         /// 지정한 위치에 열을 삽입합니다.
         /// </summary>
         /// <param name="index">삽입 위치입니다.</param>

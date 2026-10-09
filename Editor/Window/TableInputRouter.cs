@@ -281,6 +281,14 @@ namespace NKStudio.TabularEditor.Window
                     return;
 
                 case KeyCode.Escape:
+                    // 열 메뉴가 떠 있으면 그것부터 닫는다. 한 번 더 누르면 검색을 닫는다.
+                    if (_gridView.IsColumnMenuOpen)
+                    {
+                        _gridView.CloseColumnMenu();
+                        Consume(evt);
+                        return;
+                    }
+
                     if (_searchController != null && _searchController.IsOpen)
                     {
                         _searchController.Close();

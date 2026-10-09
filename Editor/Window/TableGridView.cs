@@ -32,6 +32,11 @@ namespace NKStudio.TabularEditor.Window
         private const string ColumnHeaderCornerClassName = "table-editor__column-header--corner";
         private const string ColumnHeaderTitleClassName = "table-editor__column-header-title";
         private const string ColumnResizerClassName = "table-editor__column-resizer";
+        private const string ColumnMenuButtonClassName = "table-editor__column-menu-button";
+        private const string ColumnHeaderMenuOpenClassName = "table-editor__column-header--menu-open";
+
+        // DropdownField가 쓰는 Unity 기본 화살표다. 에디터 테마(라이트/다크)에 맞는 아이콘을 그대로 얻는다.
+        private const string UnityPopupArrowClassName = "unity-base-popup-field__arrow";
         private const string RowClassName = "table-editor__row";
         private const string RowNumberLabelClassName = "table-editor__row-number-label";
         private const string EditFieldEditingClassName = "table-editor__edit-field--editing";
@@ -54,6 +59,7 @@ namespace NKStudio.TabularEditor.Window
         private readonly ListView _listView;
         private readonly ScrollView _scrollView;
         private readonly TextField _editField;
+        private readonly TableColumnMenu _columnMenu;
         private readonly ContextualMenuManipulator _headerMenuManipulator;
         private readonly IVisualElementScheduledItem _placementUpdate;
         private readonly List<int> _itemIndices = new();
@@ -132,6 +138,11 @@ namespace NKStudio.TabularEditor.Window
             _container.Add(_editField);
             SetEditFieldEditing(false);
 
+            // 편집 필드보다 나중에 붙여야 그 위에 그려진다.
+            _columnMenu = new TableColumnMenu(_container);
+            _columnMenu.SortRequested += RequestSort;
+            _columnMenu.Closed += OnColumnMenuClosed;
+
             // 스크롤 직후에는 새로 바인딩한 셀의 레이아웃이 아직 없으므로 다음 프레임에 편집 필드를 옮긴다.
             _placementUpdate = _listView.schedule.Execute(UpdateEditFieldPlacement);
             _placementUpdate.Pause();
@@ -190,6 +201,11 @@ namespace NKStudio.TabularEditor.Window
         public bool IsTypingEntry => _isTypingEntry;
 
         /// <summary>
+        /// 열 메뉴가 열려 있는지 여부입니다.
+        /// </summary>
+        public bool IsColumnMenuOpen => _columnMenu.IsOpen;
+
+        /// <summary>
         /// 한 화면에 보이는 행 개수입니다. PageUp/PageDown 이동에 사용합니다.
         /// </summary>
         public int VisibleRowCount
@@ -242,6 +258,7 @@ namespace NKStudio.TabularEditor.Window
                 _document.StructureChanged -= OnDocumentStructureChanged;
             }
 
+            _columnMenu.Close();
             _document = document;
             _columnWidths.Clear();
 
@@ -493,6 +510,14 @@ namespace NKStudio.TabularEditor.Window
         }
 
         /// <summary>
+        /// 열려 있는 열 메뉴를 닫습니다.
+        /// </summary>
+        public void CloseColumnMenu()
+        {
+            _columnMenu.Close();
+        }
+
+        /// <summary>
         /// 그리드에 키보드 포커스를 부여합니다.
         /// </summary>
         public void FocusGrid()
@@ -518,6 +543,9 @@ namespace NKStudio.TabularEditor.Window
             _scrollView.horizontalScroller.valueChanged -= OnHorizontalScrollChanged;
             _scrollView.verticalScroller.valueChanged -= OnVerticalScrollChanged;
             _placementUpdate.Pause();
+            _columnMenu.SortRequested -= RequestSort;
+            _columnMenu.Closed -= OnColumnMenuClosed;
+            _columnMenu.Dispose();
 
             if (_document != null)
             {
@@ -540,6 +568,8 @@ namespace NKStudio.TabularEditor.Window
 
         private void OnHorizontalScrollChanged(float scrollX)
         {
+            // 메뉴는 열 제목에 붙어 있으므로 열이 움직이면 위치가 어긋난다.
+            _columnMenu.Close();
             _headerContent.style.left = -scrollX;
 
             if (UpdateVisibleColumnRange())
@@ -566,9 +596,12 @@ namespace NKStudio.TabularEditor.Window
             if (evt.button != 0 || _pressedColumnIndex < 0)
                 return;
 
-            // 경계의 폭 조절 손잡이는 자기 콜백에서 드래그를 처리한다.
-            if (evt.target is VisualElement target && target.ClassListContains(ColumnResizerClassName))
+            // 경계의 폭 조절 손잡이와 열 메뉴 버튼은 자기 콜백에서 처리한다. 열을 선택하지 않는다.
+            if (evt.target is VisualElement target
+                && (target.ClassListContains(ColumnResizerClassName) || target.ClassListContains(ColumnMenuButtonClassName)))
+            {
                 return;
+            }
 
             // 헤더는 포커스를 받지 않는 요소라, 그냥 두면 포커스 컨트롤러가 편집 필드의 포커스를 거둬 간다.
             _listView.focusController?.IgnoreEvent(evt);
@@ -591,6 +624,41 @@ namespace NKStudio.TabularEditor.Window
             // 셀 위에서 눌렀으면 드래그로 범위를 넓힐 준비를 한다.
             // 더블클릭은 편집 진입이므로 드래그를 걸지 않는다. 걸어두면 손떨림 한 번에 편집이 닫힌다.
             _isDragSelecting = evt.clickCount < 2 && TryGetCellAt(evt.position, out _);
+        }
+
+        private void OnColumnMenuButtonPointerDown(PointerDownEvent evt)
+        {
+            if (evt.button != 0)
+                return;
+
+            if (evt.currentTarget is not VisualElement menuButton)
+                return;
+
+            if (menuButton.parent?.userData is not TableCellBinding binding || binding.Column < 0)
+                return;
+
+            evt.StopPropagation();
+            _listView.focusController?.IgnoreEvent(evt);
+
+            CommitEdit();
+            _columnMenu.Open(binding.Column, menuButton.parent.worldBound);
+            RefreshColumnHeaderStates();
+        }
+
+        private void OnColumnMenuClosed()
+        {
+            RefreshColumnHeaderStates();
+            FocusGrid();
+        }
+
+        private void RequestSort(int columnIndex, bool descending)
+        {
+            // 정렬할 데이터 행이 둘 이상일 때만 의미가 있다. 아니면 Undo 목록에 빈 작업만 남는다.
+            if (_document == null || MaxRow <= MinRow)
+                return;
+
+            CommitEdit();
+            CommandRequested?.Invoke(new SortRowsCommand(MinRow, columnIndex, descending));
         }
 
         private void OnResizerPointerDown(PointerDownEvent evt)
@@ -771,6 +839,8 @@ namespace NKStudio.TabularEditor.Window
 
         private void OnDocumentStructureChanged()
         {
+            // 열이 추가·삭제되면 메뉴가 가리키던 열 번호가 다른 열을 가리킬 수 있다.
+            _columnMenu.Close();
             RebuildColumnLayout();
             RebuildItems();
             Selection.Clamp(MinRow, _document?.RowCount ?? 1, _document?.ColumnCount ?? 1);
@@ -918,6 +988,16 @@ namespace NKStudio.TabularEditor.Window
             title.AddToClassList(ColumnHeaderTitleClassName);
             title.pickingMode = PickingMode.Ignore;
             headerCell.Add(title);
+
+            VisualElement menuButton = new();
+            menuButton.AddToClassList(ColumnMenuButtonClassName);
+            menuButton.RegisterCallback<PointerDownEvent>(OnColumnMenuButtonPointerDown);
+
+            VisualElement arrow = new();
+            arrow.AddToClassList(UnityPopupArrowClassName);
+            arrow.pickingMode = PickingMode.Ignore;
+            menuButton.Add(arrow);
+            headerCell.Add(menuButton);
 
             VisualElement resizer = new();
             resizer.AddToClassList(ColumnResizerClassName);
@@ -1266,6 +1346,9 @@ namespace NKStudio.TabularEditor.Window
             if (columnIndex < Selection.MinColumn || columnIndex > Selection.MaxColumn)
                 Selection.SetRange(MinRow, columnIndex, MaxRow, columnIndex, CellSelectionKind.Columns);
 
+            evt.menu.AppendAction("오름차순 정렬", _ => RequestSort(columnIndex, false));
+            evt.menu.AppendAction("내림차순 정렬", _ => RequestSort(columnIndex, true));
+            evt.menu.AppendSeparator();
             AppendColumnActions(evt.menu);
             evt.menu.AppendSeparator();
             AppendClipboardActions(evt.menu);
@@ -1381,6 +1464,9 @@ namespace NKStudio.TabularEditor.Window
                     && binding.Column <= Selection.MaxColumn;
 
                 headerCell.EnableInClassList(ColumnHeaderSelectedClassName, isSelected);
+
+                // 메뉴가 열린 열은 마우스를 치워도 ▼ 버튼을 계속 보여 준다.
+                headerCell.EnableInClassList(ColumnHeaderMenuOpenClassName, _columnMenu.ColumnIndex == binding.Column);
             }
         }
 
