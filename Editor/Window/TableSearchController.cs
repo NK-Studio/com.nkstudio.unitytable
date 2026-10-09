@@ -33,6 +33,10 @@ namespace NKStudio.TabularEditor.Window
         private int _currentIndex = -1;
         private IVisualElementScheduledItem _pendingRebuild;
 
+        // _matches를 만든 검색 조건입니다. null이면 _matches를 좁혀 쓸 수 없어 전체 셀을 다시 훑는다.
+        private string _matchesKeyword;
+        private bool _matchesMatchCase;
+
         /// <summary>
         /// 검색 컨트롤러를 생성하고 검색 바 요소를 캐싱합니다.
         /// </summary>
@@ -106,6 +110,7 @@ namespace NKStudio.TabularEditor.Window
             _searchBar.AddToClassList(HiddenClassName);
             _matches.Clear();
             _matchSet.Clear();
+            _matchesKeyword = null;
             _currentIndex = -1;
 
             _gridView.SetSearchMatches(null);
@@ -117,6 +122,9 @@ namespace NKStudio.TabularEditor.Window
         /// </summary>
         public void Refresh()
         {
+            // 셀 값이 바뀌었으니 이전 결과 밖에서 새로 일치하는 셀이 생겼을 수 있다.
+            _matchesKeyword = null;
+
             if (!IsOpen)
                 return;
 
@@ -179,8 +187,6 @@ namespace NKStudio.TabularEditor.Window
         {
             // 즉시 검색(열기·문서 변경·대소문자 토글)이 대기 중인 검색을 대신하므로 중복 실행을 막는다.
             CancelPendingRebuild();
-            _matches.Clear();
-            _matchSet.Clear();
             _currentIndex = -1;
 
             TableDocument document = _gridView.Document;
@@ -188,6 +194,10 @@ namespace NKStudio.TabularEditor.Window
 
             if (document == null || string.IsNullOrEmpty(keyword))
             {
+                _matches.Clear();
+                _matchSet.Clear();
+                _matchesKeyword = null;
+
                 _gridView.SetSearchMatches(null);
                 UpdateCountLabel();
                 return;
@@ -199,26 +209,61 @@ namespace NKStudio.TabularEditor.Window
                 ? StringComparison.Ordinal
                 : StringComparison.OrdinalIgnoreCase;
 
+            if (CanNarrowMatches(keyword, matchCase, comparison))
+                NarrowMatches(document, keyword, comparison);
+            else
+                ScanAllCells(document, keyword, comparison);
+
+            _matchesKeyword = keyword;
+            _matchesMatchCase = matchCase;
+
+            _gridView.SetSearchMatches(_matchSet);
+            UpdateCountLabel();
+        }
+
+        // 새 검색어가 이전 검색어를 포함하면("ca" → "cat", "at" → "cat") 새 결과는 이전 결과의 부분집합이다.
+        // 대소문자 설정이 바뀐 경우는 단순하게 전체 검색으로 처리한다.
+        private bool CanNarrowMatches(string keyword, bool matchCase, StringComparison comparison)
+        {
+            if (_matchesKeyword == null || _matchesMatchCase != matchCase)
+                return false;
+
+            return keyword.IndexOf(_matchesKeyword, comparison) >= 0;
+        }
+
+        private void ScanAllCells(TableDocument document, string keyword, StringComparison comparison)
+        {
+            _matches.Clear();
+            _matchSet.Clear();
+
             for (int row = _gridView.MinRow; row <= _gridView.MaxRow; row++)
             {
                 for (int column = 0; column <= _gridView.MaxColumn; column++)
                 {
-                    string value = document.GetCell(row, column);
-
-                    if (string.IsNullOrEmpty(value))
-                        continue;
-
-                    if (value.IndexOf(keyword, comparison) < 0)
-                        continue;
-
                     CellCoord coord = new(row, column);
+
+                    if (!CellContains(document, coord, keyword, comparison))
+                        continue;
+
                     _matches.Add(coord);
                     _matchSet.Add(coord);
                 }
             }
+        }
 
-            _gridView.SetSearchMatches(_matchSet);
-            UpdateCountLabel();
+        // 이전 결과를 순서대로 걸러내므로 행 우선 순서가 유지된다.
+        private void NarrowMatches(TableDocument document, string keyword, StringComparison comparison)
+        {
+            _matches.RemoveAll(coord => !CellContains(document, coord, keyword, comparison));
+
+            _matchSet.Clear();
+            _matchSet.UnionWith(_matches);
+        }
+
+        private static bool CellContains(TableDocument document, CellCoord coord, string keyword, StringComparison comparison)
+        {
+            string value = document.GetCell(coord.Row, coord.Column);
+            return !string.IsNullOrEmpty(value) && value.IndexOf(keyword, comparison) >= 0;
         }
 
         private void MoveToMatch(int direction)
