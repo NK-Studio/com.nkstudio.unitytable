@@ -14,6 +14,10 @@ namespace NKStudio.TabularEditor.Window
     {
         private const string HiddenClassName = "table-editor__search-bar--hidden";
 
+        // 연속 타이핑 중에는 키마다 전체 셀을 훑지 않도록 입력이 멈춘 뒤에 검색한다.
+        // 150ms는 보통 타자 속도의 키 간격보다 길고, 결과가 늦게 뜬다고 느껴지지 않는 정도의 값이다.
+        private const long SearchDebounceMs = 150;
+
         private readonly TableGridView _gridView;
         private readonly VisualElement _searchBar;
         private readonly ToolbarSearchField _searchField;
@@ -27,6 +31,7 @@ namespace NKStudio.TabularEditor.Window
         private readonly HashSet<CellCoord> _matchSet = new();
 
         private int _currentIndex = -1;
+        private IVisualElementScheduledItem _pendingRebuild;
 
         /// <summary>
         /// 검색 컨트롤러를 생성하고 검색 바 요소를 캐싱합니다.
@@ -96,6 +101,8 @@ namespace NKStudio.TabularEditor.Window
             if (_searchBar == null)
                 return;
 
+            // 닫은 뒤에 대기 중이던 검색이 실행되면 강조 표시가 되살아난다.
+            CancelPendingRebuild();
             _searchBar.AddToClassList(HiddenClassName);
             _matches.Clear();
             _matchSet.Clear();
@@ -137,6 +144,7 @@ namespace NKStudio.TabularEditor.Window
         /// </summary>
         public void Dispose()
         {
+            CancelPendingRebuild();
             _searchField?.UnregisterValueChangedCallback(OnSearchValueChanged);
             _caseToggle?.UnregisterValueChangedCallback(OnCaseToggleChanged);
 
@@ -152,7 +160,14 @@ namespace NKStudio.TabularEditor.Window
 
         private void OnSearchValueChanged(ChangeEvent<string> evt)
         {
-            RebuildMatches();
+            CancelPendingRebuild();
+            _pendingRebuild = _searchField.schedule.Execute(RebuildMatches).StartingIn(SearchDebounceMs);
+        }
+
+        private void CancelPendingRebuild()
+        {
+            _pendingRebuild?.Pause();
+            _pendingRebuild = null;
         }
 
         private void OnCaseToggleChanged(ChangeEvent<bool> evt)
@@ -162,6 +177,8 @@ namespace NKStudio.TabularEditor.Window
 
         private void RebuildMatches()
         {
+            // 즉시 검색(열기·문서 변경·대소문자 토글)이 대기 중인 검색을 대신하므로 중복 실행을 막는다.
+            CancelPendingRebuild();
             _matches.Clear();
             _matchSet.Clear();
             _currentIndex = -1;
@@ -206,6 +223,10 @@ namespace NKStudio.TabularEditor.Window
 
         private void MoveToMatch(int direction)
         {
+            // 입력 직후 Enter를 누르면 아직 이전 검색어의 결과라, 대기 중인 검색을 먼저 끝낸다.
+            if (_pendingRebuild != null)
+                RebuildMatches();
+
             if (_matches.Count == 0)
                 return;
 
