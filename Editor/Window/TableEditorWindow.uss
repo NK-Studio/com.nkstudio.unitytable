@@ -138,8 +138,10 @@
     background-color: var(--unity-colors-button-background-hover);
 }
 
+/* 모서리는 가로 스크롤해도 왼쪽에 고정되어 지나가는 열 제목을 가리므로 불투명해야 한다. */
+.table-editor__column-header--corner,
 .table-editor__column-header--corner:hover {
-    background-color: rgba(0, 0, 0, 0);
+    background-color: var(--unity-colors-toolbar-background);
 }
 
 .table-editor__column-header--selected {

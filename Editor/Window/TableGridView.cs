@@ -50,6 +50,7 @@ namespace NKStudio.TabularEditor.Window
         private readonly VisualElement _container;
         private readonly VisualElement _header;
         private readonly VisualElement _headerContent;
+        private readonly VisualElement _cornerCell;
         private readonly ListView _listView;
         private readonly ScrollView _scrollView;
         private readonly TextField _editField;
@@ -93,7 +94,8 @@ namespace NKStudio.TabularEditor.Window
             _header.AddToClassList(HeaderClassName);
             _headerContent = new VisualElement();
             _headerContent.AddToClassList(HeaderContentClassName);
-            _headerContent.Add(MakeCornerHeaderCell());
+            _cornerCell = MakeCornerHeaderCell();
+            _headerContent.Add(_cornerCell);
             _header.Add(_headerContent);
             _container.Add(_header);
 
@@ -543,6 +545,8 @@ namespace NKStudio.TabularEditor.Window
             if (UpdateVisibleColumnRange())
                 RebindVisibleColumns();
 
+            UpdateFrozenGutterPositions();
+
             _placementUpdate.ExecuteLater(0);
         }
 
@@ -678,11 +682,34 @@ namespace NKStudio.TabularEditor.Window
             _isDragSelecting = false;
         }
 
+        // 행 번호 열은 가로 스크롤해도 왼쪽에 고정된다. 스크롤한 만큼 오른쪽으로 밀어 뷰포트 왼쪽 끝에 붙여 둔다.
+        private void UpdateFrozenGutterPositions()
+        {
+            float scrollX = _scrollView.scrollOffset.x;
+
+            _cornerCell.style.left = scrollX;
+
+            foreach (TableRowElement row in _boundRows)
+                row.RowNumberCell.style.left = scrollX;
+        }
+
+        // 고정된 행 번호 열이 그 아래로 지나가는 셀을 가리므로, 그 영역은 셀이 아니라 행 번호로 본다.
+        private bool IsOverFrozenGutter(Vector2 position)
+        {
+            return position.x < _scrollView.contentViewport.worldBound.xMin + RowNumberColumnWidth;
+        }
+
         // 좌표로 어떤 셀 위인지 판별한다. 화면에 보이는 셀만 존재하므로 순회 비용은 작다.
         private bool TryGetCellAt(Vector2 position, out CellCoord coord)
         {
             CellCoord found = default;
             bool hit = false;
+
+            if (IsOverFrozenGutter(position))
+            {
+                coord = found;
+                return false;
+            }
 
             _listView.Query<VisualElement>(className: CellClassName).ForEach(cell =>
             {
@@ -709,7 +736,7 @@ namespace NKStudio.TabularEditor.Window
         {
             columnIndex = -1;
 
-            if (!_header.worldBound.Contains(position))
+            if (!_header.worldBound.Contains(position) || _cornerCell.worldBound.Contains(position))
                 return false;
 
             foreach (VisualElement headerCell in _headerCells)
@@ -813,8 +840,9 @@ namespace NKStudio.TabularEditor.Window
 
             if (_columnWidths.Count > 0)
             {
-                float dataLeft = _scrollView.scrollOffset.x - RowNumberColumnWidth;
-                float dataRight = dataLeft + GetViewportWidth();
+                // 뷰포트 왼쪽은 고정된 행 번호 열이 덮으므로 데이터가 보이는 폭은 그만큼 좁다.
+                float dataLeft = _scrollView.scrollOffset.x;
+                float dataRight = dataLeft + GetViewportWidth() - RowNumberColumnWidth;
 
                 first = Math.Max(0, FindColumnAt(dataLeft) - OffscreenColumnBuffer);
                 last = Math.Min(_columnWidths.Count - 1, FindColumnAt(dataRight) + OffscreenColumnBuffer);
@@ -913,6 +941,9 @@ namespace NKStudio.TabularEditor.Window
                 VisualElement created = MakeHeaderCell();
                 _headerCells.Add(created);
                 _headerContent.Add(created);
+
+                // 고정 모서리가 그 아래로 지나가는 열 제목 위에 그려지도록 맨 앞으로 올린다.
+                _cornerCell.BringToFront();
             }
 
             for (int index = 0; index < _headerCells.Count; index++)
@@ -958,6 +989,7 @@ namespace NKStudio.TabularEditor.Window
             row.ItemIndex = itemIndex;
             _boundRows.Add(row);
 
+            row.RowNumberCell.style.left = _scrollView.scrollOffset.x;
             BindRowNumberCell(row.RowNumberCell, itemIndex);
             BindRowCells(row);
         }
@@ -995,6 +1027,9 @@ namespace NKStudio.TabularEditor.Window
                 VisualElement created = MakeCell();
                 row.Cells.Add(created);
                 row.Add(created);
+
+                // 고정된 행 번호 셀이 그 아래로 지나가는 데이터 셀 위에 그려지도록 맨 앞으로 올린다.
+                row.RowNumberCell.BringToFront();
             }
 
             for (int index = 0; index < row.Cells.Count; index++)
@@ -1498,8 +1533,9 @@ namespace NKStudio.TabularEditor.Window
 
             Vector2 offset = _scrollView.scrollOffset;
 
-            if (left < offset.x)
-                offset.x = left;
+            // 뷰포트 왼쪽 RowNumberColumnWidth만큼은 고정된 행 번호 열이 덮고 있다.
+            if (left < offset.x + RowNumberColumnWidth)
+                offset.x = left - RowNumberColumnWidth;
             else if (right > offset.x + viewportWidth)
                 offset.x = right - viewportWidth;
             else
