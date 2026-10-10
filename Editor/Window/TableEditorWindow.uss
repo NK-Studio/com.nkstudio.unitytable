@@ -1,44 +1,103 @@
 .table-editor {
     flex-grow: 1;
     flex-direction: column;
+    /* 한글이 고르게 보이도록 IBM Plex Sans KR을 쓴다. 굵은 글씨는 아래 규칙들이 Bold 파일을 직접 지정한다. */
+    -unity-font-definition: url("Fonts/IBMPlexSansKR-Regular.ttf");
 }
 
 /* 툴바 */
-
-.table-editor__toolbar-separator {
-    width: 1px;
-    margin-left: 4px;
-    margin-right: 4px;
-    margin-top: 2px;
-    margin-bottom: 2px;
-    background-color: var(--unity-colors-toolbar-border);
-}
 
 .table-editor__toolbar-spacer {
     flex-grow: 1;
 }
 
-/* 툴바 토글의 글자를 버튼 가운데에 맞춘다. */
+/* 아이콘: Icons/ 폴더의 Material Symbols(흰색 PNG)를 글자색으로 물들여 쓴다. 다크/라이트·테마를 따라간다. */
 
-.table-editor .unity-toolbar-toggle {
+.table-editor__icon {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    -unity-background-scale-mode: scale-to-fit;
+    -unity-background-image-tint-color: var(--unity-colors-label-text);
+}
+
+.table-editor__icon--search { background-image: url("Icons/search.png"); }
+.table-editor__icon--chevron { background-image: url("Icons/chevron_right.png"); }
+.table-editor__icon--match-case { background-image: url("Icons/match_case.png"); }
+.table-editor__icon--regex { background-image: url("Icons/regular_expression.png"); }
+.table-editor__icon--match-word { background-image: url("Icons/match_word.png"); }
+.table-editor__icon--next { background-image: url("Icons/arrow_downward.png"); }
+.table-editor__icon--previous { background-image: url("Icons/arrow_upward.png"); }
+.table-editor__icon--selection { background-image: url("Icons/select.png"); }
+.table-editor__icon--vertical { background-image: url("Icons/height.png"); }
+.table-editor__icon--close { background-image: url("Icons/close.png"); }
+.table-editor__icon--replace { background-image: url("Icons/find_replace.png"); }
+.table-editor__icon--replace-all { background-image: url("Icons/done_all.png"); }
+.table-editor__icon--info { background-image: url("Icons/info.png"); }
+
+.table-editor__toolbar-icon-button {
+    width: 28px;
+    padding: 0;
     justify-content: center;
     align-items: center;
 }
 
-.table-editor .unity-toolbar-toggle .unity-toggle__text {
-    flex-grow: 1;
-    -unity-text-align: middle-center;
+/* 아이콘 버튼: 평소엔 배경 없이 아이콘만, 마우스를 올리면 옅은 배경. */
+.table-editor__icon-button {
+    width: 22px;
+    height: 22px;
+    margin: 0 1px;
+    padding: 0;
+    justify-content: center;
+    align-items: center;
+    border-width: 1px;
+    border-radius: 3px;
+    border-color: rgba(0, 0, 0, 0);
+    background-color: rgba(0, 0, 0, 0);
 }
 
-/* 검색 바 */
+.table-editor__icon-button:hover {
+    background-color: var(--unity-colors-button-background-hover);
+}
 
+/*
+ * 누를 수 있는 곳은 손가락 커서로 알린다. 커서는 마우스 바로 아래 요소의 값을 쓰므로,
+ * 버튼을 덮는 아이콘 자식에도 같이 지정해야 아이콘 위에서도 바뀐다.
+ */
+.table-editor__toolbar-icon-button,
+.table-editor__icon-button,
+.table-editor__toolbar-icon-button .table-editor__icon,
+.table-editor__icon-button .table-editor__icon,
+.table-editor__add-button,
+.table-editor__bar-button,
+.table-editor__column-menu-button,
+.table-editor__column-menu-button .unity-base-popup-field__arrow,
+.table-editor__column-menu-action {
+    cursor: link;
+}
+
+/* 켜진 옵션 토글은 강조색 테두리와 옅은 배경으로 표시한다. */
+.table-editor__option-toggle--checked,
+.table-editor__option-toggle--checked:hover {
+    border-color: #3A79BB;
+    background-color: rgba(58, 121, 187, 0.35);
+}
+
+.table-editor__text-toggle {
+    width: 26px;
+    font-size: 11px;
+    -unity-font-definition: url("Fonts/IBMPlexSansKR-Bold.ttf");
+    color: var(--unity-colors-label-text);
+}
+
+/* 찾기·바꾸기 바 */
+
+/* 아래 그리드가 남는 높이를 모두 가져가므로, 줄어들지 않게 막지 않으면 바꾸기 줄을 펼쳤을 때 아래가 잘린다. */
 .table-editor__search-bar {
+    flex-shrink: 0;
     flex-direction: row;
     align-items: center;
-    padding-left: 4px;
-    padding-right: 4px;
-    padding-top: 2px;
-    padding-bottom: 2px;
+    padding: 3px 4px;
     border-bottom-width: 1px;
     border-bottom-color: var(--unity-colors-toolbar-border);
     background-color: var(--unity-colors-toolbar-background);
@@ -48,16 +107,94 @@
     display: none;
 }
 
+.table-editor__search-expand-button--expanded .table-editor__icon--chevron {
+    rotate: 90deg;
+}
+
+.table-editor__search-rows {
+    flex-grow: 1;
+    flex-direction: column;
+}
+
+.table-editor__search-row {
+    flex-direction: row;
+    align-items: center;
+    margin: 1px 0;
+}
+
+.table-editor__replace-row--hidden {
+    display: none;
+}
+
+/* 입력칸 안 오른쪽에 옵션 토글을 겹쳐 놓는다. 글자가 토글 밑으로 들어가지 않게 입력 영역 오른쪽을 비운다. */
+.table-editor__search-input {
+    width: 360px;
+    flex-shrink: 1;
+    margin-right: 4px;
+}
+
 .table-editor__search-field {
-    width: 220px;
+    margin: 0;
+}
+
+.table-editor__search-field .unity-base-text-field__input {
+    height: 24px;
+    padding-left: 6px;
+    padding-right: 72px;
+}
+
+.table-editor__search-input--single-option .unity-base-text-field__input {
+    padding-right: 32px;
+}
+
+.table-editor__search-input-options {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 2px;
+    flex-direction: row;
+    align-items: center;
+}
+
+.table-editor__search-input-options .table-editor__icon-button {
+    height: 20px;
 }
 
 .table-editor__search-count {
-    min-width: 70px;
-    margin-left: 6px;
-    margin-right: 6px;
+    margin-left: 8px;
     -unity-text-align: middle-left;
     color: var(--unity-colors-label-text);
+}
+
+/* 에디터 밖 변경 알림 바: 경고 톤으로 눈에 띄게 하되 작업을 막지 않는다. */
+
+.table-editor__external-change-bar {
+    flex-shrink: 0;
+    flex-direction: row;
+    align-items: center;
+    padding: 4px 8px;
+    border-bottom-width: 1px;
+    border-bottom-color: rgba(214, 160, 41, 0.6);
+    background-color: rgba(214, 160, 41, 0.18);
+}
+
+.table-editor__external-change-bar--hidden {
+    display: none;
+}
+
+.table-editor__external-change-bar .table-editor__icon {
+    -unity-background-image-tint-color: #E0B040;
+    margin-right: 6px;
+}
+
+.table-editor__external-change-text {
+    color: var(--unity-colors-label-text);
+}
+
+.table-editor__bar-button {
+    height: 22px;
+    margin: 0 0 0 6px;
+    padding: 0 10px;
 }
 
 /* 그리드 */
@@ -72,6 +209,30 @@
     flex-grow: 1;
     position: relative;
     overflow: hidden;
+}
+
+/*
+ * 고정 헤더 행: 행 번호 우클릭 '선택 항목까지 헤더 행 설정'으로 지정한 행을 열 제목 아래에 고정한다.
+ * 가로 스크롤은 열 제목처럼 따라가고(left는 코드가 지정), 세로 스크롤과는 무관하다. 아래 굵은 선으로 본문과 나눈다.
+ */
+
+.table-editor__frozen-pane {
+    flex-shrink: 0;
+    overflow: hidden;
+    border-bottom-width: 2px;
+    border-bottom-color: var(--unity-colors-default-border);
+    background-color: var(--unity-colors-window-background);
+}
+
+.table-editor__frozen-content {
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+
+.table-editor__row--header .table-editor__cell-label {
+    -unity-font-definition: url("Fonts/IBMPlexSansKR-Bold.ttf");
+    -unity-font-style: normal;
 }
 
 /* 행/열 추가 + 버튼 */
@@ -160,7 +321,8 @@
 
 .table-editor__column-header--selected .table-editor__column-header-title {
     color: var(--unity-colors-highlight-text);
-    -unity-font-style: bold;
+    -unity-font-definition: url("Fonts/IBMPlexSansKR-Bold.ttf");
+    -unity-font-style: normal;
 }
 
 /* 열 오른쪽 경계의 폭 조절 손잡이 */
@@ -221,7 +383,8 @@
 
 .table-editor__column-menu-title {
     margin-bottom: 6px;
-    -unity-font-style: bold;
+    -unity-font-definition: url("Fonts/IBMPlexSansKR-Bold.ttf");
+    -unity-font-style: normal;
     color: var(--unity-colors-label-text);
 }
 
@@ -253,8 +416,13 @@
     border-bottom-color: var(--unity-colors-default-border);
 }
 
+/* 범위에 든 셀은 테두리와 같은 파란색을 옅게 깐다. 회색 비활성 강조보다 선택이 또렷하게 보인다. */
 .table-editor__cell--selected {
-    background-color: var(--unity-colors-highlight-background-inactive);
+    background-color: rgba(58, 121, 187, 0.28);
+}
+
+.table-editor--light .table-editor__cell--selected {
+    background-color: rgba(58, 114, 176, 0.18);
 }
 
 .table-editor__cell--active {
@@ -306,15 +474,58 @@
     background-color: var(--unity-colors-highlight-background);
 }
 
+/* :hover가 선택보다 구체적이라, 선택된 행 번호·열 제목 위에 마우스를 올려도 선택 색이 풀리지 않게 다시 지정한다. */
+.table-editor__row-number--selected:hover,
+.table-editor__column-header--selected:hover {
+    background-color: var(--unity-colors-highlight-background);
+}
+
 .table-editor__row-number--selected .table-editor__row-number-label {
     color: var(--unity-colors-highlight-text);
-    -unity-font-style: bold;
+    -unity-font-definition: url("Fonts/IBMPlexSansKR-Bold.ttf");
+    -unity-font-style: normal;
 }
 
 .table-editor__row-number-label {
     -unity-text-align: middle-center;
     color: var(--unity-colors-label-text);
     font-size: 10px;
+}
+
+/* 선택 범위 테두리: 범위 전체를 하나의 테두리로 감싸고 오른쪽 아래에 동그란 핸들을 단다. 위치·크기는 코드가 지정한다. */
+
+.table-editor__selection-layer {
+    position: absolute;
+    overflow: hidden;
+}
+
+.table-editor__selection-box {
+    position: absolute;
+    border-width: 2px;
+    border-color: #3A79BB;
+}
+
+.table-editor--light .table-editor__selection-box {
+    border-color: #3A72B0;
+}
+
+/* 테두리 선 한가운데에 핸들 중심이 오도록 바깥으로 민다. (핸들 반지름 6 + 테두리 절반 1) */
+.table-editor__selection-handle {
+    position: absolute;
+    right: -7px;
+    bottom: -7px;
+    width: 12px;
+    height: 12px;
+    border-radius: 6px;
+    border-width: 2px;
+    border-color: var(--unity-colors-window-background);
+    background-color: #3A79BB;
+    /* Unity 내장 커서에는 십자가 없어서 스프레드시트 채우기 핸들과 같은 십자 이미지를 쓴다. 핫스팟은 십자 중심(16, 16). */
+    cursor: url("Cursors/FillHandleCursor.png") 16 16;
+}
+
+.table-editor--light .table-editor__selection-handle {
+    background-color: #3A72B0;
 }
 
 /* 셀 편집 오버레이 */
@@ -337,19 +548,21 @@
 /* 상태 바 */
 
 .table-editor__status-bar {
+    flex-shrink: 0;
     flex-direction: row;
     align-items: center;
-    height: 20px;
-    padding-left: 6px;
-    padding-right: 6px;
+    height: 24px;
+    padding-left: 10px;
+    padding-right: 10px;
     border-top-width: 1px;
     border-top-color: var(--unity-colors-toolbar-border);
     background-color: var(--unity-colors-toolbar-background);
 }
 
 .table-editor__status-label {
-    margin-right: 14px;
-    font-size: 10px;
+    margin: 0 8px;
+    padding: 0;
+    font-size: 11px;
     color: var(--unity-colors-label-text);
 }
 
@@ -374,4 +587,264 @@
     flex-grow: 1;
     -unity-text-align: middle-center;
     color: var(--unity-colors-label-text);
+}
+
+/*
+ * Android Studio 테마
+ *
+ * Unity 테마는 위의 기본 규칙(--unity-colors-*) 그대로다. Android Studio 테마는 ⋮ 메뉴에서 고르면
+ * 루트에 .table-editor--android-studio가 붙고, 아래 규칙이 색만 덮어쓴다. 레이아웃은 건드리지 않는다.
+ * 다크/라이트는 Unity 에디터 스킨을 따라 .table-editor--dark / --light로 갈린다.
+ * 색 값은 Android Studio(New UI) Dark/Light 테마에서 가져왔다.
+ */
+
+.table-editor--android-studio.table-editor--dark {
+    --te-bg: #1E1F22;
+    --te-panel-bg: #2B2D30;
+    --te-fg: #DFE1E5;
+    --te-fg-muted: #868A91;
+    --te-grid-line: #393B40;
+    --te-border: #1E1F22;
+    --te-control-border: #4E5157;
+    --te-hover: #393B40;
+    --te-pressed: #43454A;
+    --te-selection: #2E436E;
+    --te-selection-inactive: #26344F;
+    --te-selection-fg: #FFFFFF;
+    --te-focus: #3574F0;
+    --te-match: #5E4D1F;
+    --te-row-alt: #232427;
+    --te-overlay-bg: rgba(30, 31, 34, 0.9);
+}
+
+.table-editor--android-studio.table-editor--light {
+    --te-bg: #FFFFFF;
+    --te-panel-bg: #F7F8FA;
+    --te-fg: #000000;
+    --te-fg-muted: #818594;
+    --te-grid-line: #EBECF0;
+    --te-border: #DFE1E5;
+    --te-control-border: #C9CCD6;
+    --te-hover: #DFE1E5;
+    --te-pressed: #D3D5DB;
+    --te-selection: #D4E2FF;
+    --te-selection-inactive: #EDF3FF;
+    --te-selection-fg: #000000;
+    --te-focus: #3574F0;
+    --te-match: #F2E6A1;
+    --te-row-alt: #F7F8FA;
+    --te-overlay-bg: rgba(255, 255, 255, 0.9);
+}
+
+.table-editor--android-studio {
+    background-color: var(--te-bg);
+}
+
+/* Unity 기본 컨트롤(툴바·검색 필드·편집 필드)도 같은 톤으로 맞춘다. */
+
+.table-editor--android-studio .unity-toolbar,
+.table-editor--android-studio .table-editor__search-bar,
+.table-editor--android-studio .table-editor__status-bar {
+    background-color: var(--te-panel-bg);
+    border-color: var(--te-border);
+}
+
+.table-editor--android-studio .unity-toolbar-button {
+    background-color: var(--te-panel-bg);
+    border-color: var(--te-border);
+    color: var(--te-fg);
+}
+
+.table-editor--android-studio .unity-toolbar-button:hover {
+    background-color: var(--te-hover);
+}
+
+.table-editor--android-studio .unity-toolbar-button:active {
+    background-color: var(--te-pressed);
+}
+
+.table-editor--android-studio .unity-label {
+    color: var(--te-fg);
+}
+
+.table-editor--android-studio .unity-base-text-field__input {
+    background-color: var(--te-bg);
+    border-color: var(--te-control-border);
+    color: var(--te-fg);
+}
+
+.table-editor--android-studio .unity-base-text-field:focus .unity-base-text-field__input {
+    border-color: var(--te-focus);
+}
+
+.table-editor--android-studio .table-editor__search-count,
+.table-editor--android-studio .table-editor__status-label {
+    color: var(--te-fg-muted);
+}
+
+/* 찾기·바꾸기 아이콘과 옵션 토글 */
+
+.table-editor--android-studio .table-editor__icon {
+    -unity-background-image-tint-color: var(--te-fg);
+}
+
+.table-editor--android-studio .table-editor__icon-button:hover {
+    background-color: var(--te-hover);
+}
+
+.table-editor--android-studio .table-editor__option-toggle--checked,
+.table-editor--android-studio .table-editor__option-toggle--checked:hover {
+    border-color: var(--te-focus);
+    background-color: var(--te-selection);
+}
+
+.table-editor--android-studio .table-editor__text-toggle {
+    color: var(--te-fg);
+}
+
+/* 알림 바 아이콘은 테마 글자색이 아니라 경고색을 유지한다. */
+.table-editor--android-studio .table-editor__external-change-bar .table-editor__icon {
+    -unity-background-image-tint-color: #E0B040;
+}
+
+/* 행/열 추가 + 버튼 */
+
+.table-editor--android-studio .table-editor__add-button {
+    border-color: var(--te-grid-line);
+    background-color: var(--te-panel-bg);
+    color: var(--te-fg-muted);
+}
+
+.table-editor--android-studio .table-editor__add-button:hover {
+    background-color: var(--te-hover);
+    color: var(--te-fg);
+}
+
+/* 열 제목과 행 번호 */
+
+.table-editor--android-studio .table-editor__header {
+    background-color: var(--te-panel-bg);
+    border-bottom-color: var(--te-grid-line);
+}
+
+.table-editor--android-studio .table-editor__column-header,
+.table-editor--android-studio .table-editor__row-number {
+    border-right-color: var(--te-grid-line);
+    border-bottom-color: var(--te-grid-line);
+}
+
+.table-editor--android-studio .table-editor__row-number {
+    background-color: var(--te-panel-bg);
+}
+
+.table-editor--android-studio .table-editor__column-header:hover,
+.table-editor--android-studio .table-editor__row-number:hover {
+    background-color: var(--te-hover);
+}
+
+.table-editor--android-studio .table-editor__column-header--corner,
+.table-editor--android-studio .table-editor__column-header--corner:hover {
+    background-color: var(--te-panel-bg);
+}
+
+.table-editor--android-studio .table-editor__column-header--selected,
+.table-editor--android-studio .table-editor__row-number--selected,
+.table-editor--android-studio .table-editor__column-header--selected:hover,
+.table-editor--android-studio .table-editor__row-number--selected:hover {
+    background-color: var(--te-selection);
+}
+
+.table-editor--android-studio .table-editor__column-header-title {
+    color: var(--te-fg);
+}
+
+.table-editor--android-studio .table-editor__row-number-label {
+    color: var(--te-fg-muted);
+}
+
+.table-editor--android-studio .table-editor__column-header--selected .table-editor__column-header-title,
+.table-editor--android-studio .table-editor__row-number--selected .table-editor__row-number-label {
+    color: var(--te-selection-fg);
+}
+
+.table-editor--android-studio .table-editor__column-menu-button {
+    background-color: var(--te-panel-bg);
+}
+
+.table-editor--android-studio .table-editor__column-menu-button:hover {
+    background-color: var(--te-hover);
+}
+
+.table-editor--android-studio .table-editor__column-menu {
+    border-color: var(--te-control-border);
+    background-color: var(--te-panel-bg);
+}
+
+.table-editor--android-studio .table-editor__column-menu-title {
+    color: var(--te-fg);
+}
+
+/* 셀 */
+
+/* ListView가 깔아 주는 Unity 회색 줄무늬를 테마 톤으로 바꾼다. */
+.table-editor--android-studio .table-editor__grid,
+.table-editor--android-studio .unity-collection-view__item,
+.table-editor--android-studio .unity-collection-view__item:hover {
+    background-color: var(--te-bg);
+}
+
+.table-editor--android-studio .unity-collection-view__item--alternative-background,
+.table-editor--android-studio .unity-collection-view__item--alternative-background:hover {
+    background-color: var(--te-row-alt);
+}
+
+.table-editor--android-studio .table-editor__cell {
+    border-right-color: var(--te-grid-line);
+    border-bottom-color: var(--te-grid-line);
+}
+
+.table-editor--android-studio .table-editor__cell--selected {
+    background-color: var(--te-selection-inactive);
+}
+
+.table-editor--android-studio .table-editor__cell--active {
+    background-color: var(--te-selection);
+    border-left-color: var(--te-focus);
+    border-top-color: var(--te-focus);
+    border-right-color: var(--te-focus);
+    border-bottom-color: var(--te-focus);
+}
+
+.table-editor--android-studio .table-editor__cell--match {
+    background-color: var(--te-match);
+}
+
+.table-editor--android-studio .table-editor__cell-label {
+    color: var(--te-fg);
+}
+
+/* 고정 헤더 행 */
+
+.table-editor--android-studio .table-editor__frozen-pane {
+    border-bottom-color: var(--te-control-border);
+    background-color: var(--te-bg);
+}
+
+/* 선택 범위 테두리와 핸들 */
+
+.table-editor--android-studio .table-editor__selection-box {
+    border-color: var(--te-focus);
+}
+
+.table-editor--android-studio .table-editor__selection-handle {
+    border-color: var(--te-bg);
+    background-color: var(--te-focus);
+}
+
+/* 오버레이 */
+
+.table-editor--android-studio .table-editor__loading-overlay {
+    color: var(--te-fg);
+    background-color: var(--te-overlay-bg);
+    opacity: 1;
 }

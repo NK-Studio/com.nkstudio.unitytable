@@ -40,6 +40,12 @@ namespace NKStudio.TabularEditor.Window
         private const string RowClassName = "table-editor__row";
         private const string RowNumberLabelClassName = "table-editor__row-number-label";
         private const string EditFieldEditingClassName = "table-editor__edit-field--editing";
+        private const string SelectionLayerClassName = "table-editor__selection-layer";
+        private const string SelectionBoxClassName = "table-editor__selection-box";
+        private const string SelectionHandleClassName = "table-editor__selection-handle";
+        private const string FrozenPaneClassName = "table-editor__frozen-pane";
+        private const string FrozenContentClassName = "table-editor__frozen-content";
+        private const string HeaderRowClassName = "table-editor__row--header";
 
         private const float DefaultColumnWidth = 160f;
         private const float RowNumberColumnWidth = 46f;
@@ -59,6 +65,13 @@ namespace NKStudio.TabularEditor.Window
         private readonly ListView _listView;
         private readonly ScrollView _scrollView;
         private readonly TextField _editField;
+        private readonly VisualElement _frozenPane;
+        private readonly VisualElement _frozenContent;
+        private readonly List<TableRowElement> _frozenRows = new();
+        private readonly VisualElement _selectionLayer;
+        private readonly VisualElement _selectionBox;
+        private readonly VisualElement _frozenSelectionLayer;
+        private readonly VisualElement _frozenSelectionBox;
         private readonly TableColumnMenu _columnMenu;
         private readonly ContextualMenuManipulator _headerMenuManipulator;
         private readonly IVisualElementScheduledItem _placementUpdate;
@@ -78,7 +91,7 @@ namespace NKStudio.TabularEditor.Window
         private float _resizeStartX;
         private float _resizeStartWidth;
         private HashSet<CellCoord> _matches;
-        private bool _isDragSelecting;
+        private DragSelectMode _dragSelectMode;
         private bool _isEditing;
         private bool _isTypingEntry;
         private bool _suppressEditCommit;
@@ -105,6 +118,15 @@ namespace NKStudio.TabularEditor.Window
             _header.Add(_headerContent);
             _container.Add(_header);
 
+            // 헤더 행은 ListView 밖에 따로 두어 세로 스크롤해도 맨 위에 고정한다. 가로 스크롤은 열 제목처럼 따라간다.
+            _frozenPane = new VisualElement();
+            _frozenPane.AddToClassList(FrozenPaneClassName);
+            _frozenContent = new VisualElement();
+            _frozenContent.AddToClassList(FrozenContentClassName);
+            _frozenPane.Add(_frozenContent);
+            _frozenPane.style.display = DisplayStyle.None;
+            _container.Add(_frozenPane);
+
             _listView = new ListView();
             _listView.AddToClassList("table-editor__grid");
             _listView.selectionType = SelectionType.None;
@@ -123,6 +145,11 @@ namespace NKStudio.TabularEditor.Window
             _scrollView = _listView.Q<ScrollView>();
             _scrollView.horizontalScroller.valueChanged += OnHorizontalScrollChanged;
             _scrollView.verticalScroller.valueChanged += OnVerticalScrollChanged;
+
+            // 셀 위에 겹쳐 그리고 편집 필드보다 먼저 붙여, 편집 중에는 필드가 테두리 안쪽을 덮게 한다.
+            // 고정 헤더 행과 본문은 스크롤이 따로라서 테두리도 구역마다 하나씩 둔다.
+            _frozenSelectionLayer = CreateSelectionLayer(out _frozenSelectionBox);
+            _selectionLayer = CreateSelectionLayer(out _selectionBox);
 
             _editField = new TextField();
             _editField.AddToClassList("table-editor__edit-field");
@@ -144,7 +171,7 @@ namespace NKStudio.TabularEditor.Window
             _columnMenu.Closed += OnColumnMenuClosed;
 
             // 스크롤 직후에는 새로 바인딩한 셀의 레이아웃이 아직 없으므로 다음 프레임에 편집 필드를 옮긴다.
-            _placementUpdate = _listView.schedule.Execute(UpdateEditFieldPlacement);
+            _placementUpdate = _listView.schedule.Execute(UpdateOverlayPlacement);
             _placementUpdate.Pause();
 
             _listView.RegisterCallback<GeometryChangedEvent>(OnListGeometryChanged);
@@ -154,9 +181,31 @@ namespace NKStudio.TabularEditor.Window
             _headerMenuManipulator = new ContextualMenuManipulator(BuildColumnHeaderContextMenu);
             _header.AddManipulator(_headerMenuManipulator);
 
-            _listView.RegisterCallback<PointerDownEvent>(OnGridPointerDown, TrickleDown.TrickleDown);
-            _listView.RegisterCallback<PointerMoveEvent>(OnGridPointerMove, TrickleDown.TrickleDown);
-            _listView.RegisterCallback<PointerUpEvent>(OnGridPointerUp, TrickleDown.TrickleDown);
+            // 드래그 선택은 본문뿐 아니라 고정 헤더 행·열 제목 위에서도 이어져야 하므로 컨테이너에서 받는다.
+            _container.RegisterCallback<PointerDownEvent>(OnGridPointerDown, TrickleDown.TrickleDown);
+            _container.RegisterCallback<PointerMoveEvent>(OnGridPointerMove, TrickleDown.TrickleDown);
+            _container.RegisterCallback<PointerUpEvent>(OnGridPointerUp, TrickleDown.TrickleDown);
+        }
+
+        private VisualElement CreateSelectionLayer(out VisualElement box)
+        {
+            VisualElement layer = new();
+            layer.AddToClassList(SelectionLayerClassName);
+            layer.pickingMode = PickingMode.Ignore;
+            layer.style.display = DisplayStyle.None;
+
+            box = new VisualElement();
+            box.AddToClassList(SelectionBoxClassName);
+            box.pickingMode = PickingMode.Ignore;
+
+            VisualElement handle = new();
+            handle.AddToClassList(SelectionHandleClassName);
+            box.Add(handle);
+
+            layer.Add(box);
+            _container.Add(layer);
+
+            return layer;
         }
 
         /// <summary>
@@ -170,19 +219,14 @@ namespace NKStudio.TabularEditor.Window
         public TableDocument Document => _document;
 
         /// <summary>
-        /// 첫 행을 열 제목으로 사용할지 여부입니다.
+        /// 맨 위에 고정해 보여 주는 헤더 행 개수입니다. 헤더 행도 선택·편집할 수 있고, 정렬에서만 빠집니다.
         /// </summary>
-        public bool UseFirstRowAsHeader { get; private set; } = true;
+        public int HeaderRowCount { get; private set; }
 
         /// <summary>
-        /// 편집 가능한 첫 행 인덱스입니다. 헤더 사용 시 1입니다.
+        /// 마지막 행 인덱스입니다.
         /// </summary>
-        public int MinRow => UseFirstRowAsHeader && _document != null && _document.RowCount > 1 ? 1 : 0;
-
-        /// <summary>
-        /// 편집 가능한 마지막 행 인덱스입니다.
-        /// </summary>
-        public int MaxRow => _document == null ? 0 : Math.Max(MinRow, _document.RowCount - 1);
+        public int MaxRow => _document == null ? 0 : Math.Max(0, _document.RowCount - 1);
 
         /// <summary>
         /// 마지막 열 인덱스입니다.
@@ -247,10 +291,18 @@ namespace NKStudio.TabularEditor.Window
         public event Action ClearRequested;
 
         /// <summary>
+        /// 컨텍스트 메뉴에서 헤더 행 수를 바꾸려 할 때 호출됩니다. 저장은 호출한 쪽이 맡고 <see cref="SetHeaderRowCount"/>로 반영합니다.
+        /// </summary>
+        public event Action<int> HeaderRowsRequested;
+
+        /// <summary>
         /// 표시할 문서를 설정하고 그리드를 다시 만듭니다.
         /// </summary>
         /// <param name="document">표시할 문서입니다.</param>
-        public void SetDocument(TableDocument document)
+        /// <param name="preserveView">
+        /// 같은 파일을 다시 읽은 경우 true입니다. 선택·스크롤 위치·열 폭을 그대로 두어 화면이 튀지 않게 합니다.
+        /// </param>
+        public void SetDocument(TableDocument document, bool preserveView = false)
         {
             if (_document != null)
             {
@@ -258,9 +310,19 @@ namespace NKStudio.TabularEditor.Window
                 _document.StructureChanged -= OnDocumentStructureChanged;
             }
 
+            CellCoord anchor = Selection.Anchor;
+            CellCoord focus = Selection.Focus;
+            CellSelectionKind kind = Selection.Kind;
+            Vector2 scrollOffset = _scrollView.scrollOffset;
+            List<float> keptWidths = preserveView ? new List<float>(_columnWidths) : null;
+
             _columnMenu.Close();
             _document = document;
             _columnWidths.Clear();
+
+            // 열이 늘거나 줄었으면 남아 있는 앞쪽 열의 폭만 이어 쓴다. 나머지는 기본 폭이 채운다.
+            if (keptWidths != null && _document != null)
+                _columnWidths.AddRange(keptWidths.GetRange(0, Math.Min(keptWidths.Count, _document.ColumnCount)));
 
             if (_document != null)
             {
@@ -268,26 +330,40 @@ namespace NKStudio.TabularEditor.Window
                 _document.StructureChanged += OnDocumentStructureChanged;
             }
 
+            HeaderRowCount = Math.Min(HeaderRowCount, _document?.RowCount ?? 0);
+
             CancelEdit();
             RebuildColumnLayout();
             RebuildItems();
-            Selection.SetActive(new CellCoord(MinRow, 0));
+
+            if (preserveView == false)
+            {
+                Selection.SetActive(new CellCoord(0, 0));
+                return;
+            }
+
+            Selection.SetRange(anchor.Row, anchor.Column, focus.Row, focus.Column, kind);
+            Selection.Clamp(0, _document?.RowCount ?? 1, _document?.ColumnCount ?? 1);
+
+            // 항목을 다시 만든 직후에는 스크롤 범위가 아직 계산되지 않아 offset이 잘리므로 레이아웃 뒤에 되돌린다.
+            _listView.schedule.Execute(() => _scrollView.scrollOffset = scrollOffset);
         }
 
         /// <summary>
-        /// 첫 행을 헤더로 사용할지 설정합니다.
+        /// 맨 위에 고정할 헤더 행 개수를 설정합니다. 문서 행 수를 넘으면 행 수로 줄입니다.
         /// </summary>
-        /// <param name="useHeader">헤더로 사용하면 true입니다.</param>
-        public void SetUseFirstRowAsHeader(bool useHeader)
+        /// <param name="count">헤더 행 개수입니다. 0이면 헤더 행이 없습니다.</param>
+        public void SetHeaderRowCount(int count)
         {
-            if (UseFirstRowAsHeader == useHeader)
+            int clamped = Math.Clamp(count, 0, _document?.RowCount ?? 0);
+
+            if (HeaderRowCount == clamped)
                 return;
 
-            UseFirstRowAsHeader = useHeader;
-            CancelEdit();
-            RebuildColumnLayout();
+            HeaderRowCount = clamped;
+            CommitEdit();
             RebuildItems();
-            Selection.Clamp(MinRow, _document?.RowCount ?? 1, _document?.ColumnCount ?? 1);
+            RefreshCellStates();
         }
 
         /// <summary>
@@ -308,7 +384,7 @@ namespace NKStudio.TabularEditor.Window
         public void SetActiveCell(CellCoord coord, bool extendSelection)
         {
             CellCoord clamped = new(
-                Math.Clamp(coord.Row, MinRow, MaxRow),
+                Math.Clamp(coord.Row, 0, MaxRow),
                 Math.Clamp(coord.Column, 0, MaxColumn));
 
             CommitEdit();
@@ -332,8 +408,9 @@ namespace NKStudio.TabularEditor.Window
         /// <param name="extendSelection">범위를 확장하면 true입니다.</param>
         public void MoveActiveCell(int rowDelta, int columnDelta, bool extendSelection)
         {
-            CellCoord focus = Selection.Focus;
-            SetActiveCell(new CellCoord(focus.Row + rowDelta, focus.Column + columnDelta), extendSelection);
+            // 확장은 범위의 끝을, 그냥 이동은 활성 셀(범위 시작점)을 기준으로 움직인다.
+            CellCoord origin = extendSelection ? Selection.Focus : Selection.Anchor;
+            SetActiveCell(new CellCoord(origin.Row + rowDelta, origin.Column + columnDelta), extendSelection);
         }
 
         /// <summary>
@@ -342,9 +419,9 @@ namespace NKStudio.TabularEditor.Window
         /// <param name="backward">왼쪽으로 이동하면 true입니다.</param>
         public void MoveActiveCellWithWrap(bool backward)
         {
-            CellCoord focus = Selection.Focus;
-            int row = focus.Row;
-            int column = focus.Column + (backward ? -1 : 1);
+            CellCoord active = Selection.Anchor;
+            int row = active.Row;
+            int column = active.Column + (backward ? -1 : 1);
 
             if (column > MaxColumn)
             {
@@ -354,7 +431,7 @@ namespace NKStudio.TabularEditor.Window
             else if (column < 0)
             {
                 column = MaxColumn;
-                row = Math.Max(MinRow, row - 1);
+                row = Math.Max(0, row - 1);
             }
 
             SetActiveCell(new CellCoord(row, column), false);
@@ -422,7 +499,7 @@ namespace NKStudio.TabularEditor.Window
         public void SelectAll()
         {
             CommitEdit();
-            Selection.SetRange(MinRow, 0, MaxRow, MaxColumn);
+            Selection.SetRange(0, 0, MaxRow, MaxColumn);
         }
 
         /// <summary>
@@ -434,12 +511,12 @@ namespace NKStudio.TabularEditor.Window
             if (_document == null || _isEditing)
                 return;
 
-            _isDragSelecting = false;
+            _dragSelectMode = DragSelectMode.None;
 
-            ScrollToActiveCell();
+            ScrollToCell(Selection.Anchor);
             UpdateEditFieldPlacement();
 
-            _editingCoord = Selection.Focus;
+            _editingCoord = Selection.Anchor;
             _editOriginalValue = _document.GetCell(_editingCoord.Row, _editingCoord.Column);
             _isEditing = true;
             _isTypingEntry = initialText != null;
@@ -496,17 +573,26 @@ namespace NKStudio.TabularEditor.Window
         }
 
         /// <summary>
-        /// 활성 셀이 화면에 보이도록 스크롤합니다.
+        /// 범위의 움직이는 끝이 화면에 보이도록 스크롤합니다. 셀 하나만 선택했으면 활성 셀입니다.
         /// </summary>
         public void ScrollToActiveCell()
         {
-            if (_document == null || _itemIndices.Count == 0)
+            ScrollToCell(Selection.Focus);
+        }
+
+        private void ScrollToCell(CellCoord coord)
+        {
+            if (_document == null)
                 return;
 
-            int itemIndex = Math.Clamp(Selection.Focus.Row - HeaderOffset, 0, _itemIndices.Count - 1);
-            _listView.ScrollToItem(itemIndex);
+            // 고정 헤더 행은 늘 보이므로 세로로는 움직이지 않는다.
+            if (coord.Row >= HeaderRowCount && _itemIndices.Count > 0)
+            {
+                int itemIndex = Math.Clamp(coord.Row - HeaderRowCount, 0, _itemIndices.Count - 1);
+                _listView.ScrollToItem(itemIndex);
+            }
 
-            ScrollToColumn(Selection.Focus.Column);
+            ScrollToColumn(coord.Column);
         }
 
         /// <summary>
@@ -535,9 +621,9 @@ namespace NKStudio.TabularEditor.Window
             _editField.UnregisterCallback<FocusOutEvent>(OnEditFieldFocusOut);
             _editField.UnregisterCallback<ChangeEvent<string>>(OnEditFieldValueChanged);
             _listView.UnregisterCallback<GeometryChangedEvent>(OnListGeometryChanged);
-            _listView.UnregisterCallback<PointerDownEvent>(OnGridPointerDown, TrickleDown.TrickleDown);
-            _listView.UnregisterCallback<PointerMoveEvent>(OnGridPointerMove, TrickleDown.TrickleDown);
-            _listView.UnregisterCallback<PointerUpEvent>(OnGridPointerUp, TrickleDown.TrickleDown);
+            _container.UnregisterCallback<PointerDownEvent>(OnGridPointerDown, TrickleDown.TrickleDown);
+            _container.UnregisterCallback<PointerMoveEvent>(OnGridPointerMove, TrickleDown.TrickleDown);
+            _container.UnregisterCallback<PointerUpEvent>(OnGridPointerUp, TrickleDown.TrickleDown);
             _header.UnregisterCallback<PointerDownEvent>(OnHeaderPointerDown, TrickleDown.TrickleDown);
             _header.RemoveManipulator(_headerMenuManipulator);
             _scrollView.horizontalScroller.valueChanged -= OnHorizontalScrollChanged;
@@ -555,15 +641,13 @@ namespace NKStudio.TabularEditor.Window
             }
         }
 
-        private int HeaderOffset => UseFirstRowAsHeader && _document != null && _document.RowCount > 1 ? 1 : 0;
-
         private void OnListGeometryChanged(GeometryChangedEvent evt)
         {
             // 창 크기가 바뀌면 보이는 열 범위도 달라진다.
             if (UpdateVisibleColumnRange())
                 RebindVisibleColumns();
 
-            UpdateEditFieldPlacement();
+            UpdateOverlayPlacement();
         }
 
         private void OnHorizontalScrollChanged(float scrollX)
@@ -571,17 +655,20 @@ namespace NKStudio.TabularEditor.Window
             // 메뉴는 열 제목에 붙어 있으므로 열이 움직이면 위치가 어긋난다.
             _columnMenu.Close();
             _headerContent.style.left = -scrollX;
+            _frozenContent.style.left = -scrollX;
 
             if (UpdateVisibleColumnRange())
                 RebindVisibleColumns();
 
             UpdateFrozenGutterPositions();
+            UpdateSelectionBoxPlacement();
 
             _placementUpdate.ExecuteLater(0);
         }
 
         private void OnVerticalScrollChanged(float scrollY)
         {
+            UpdateSelectionBoxPlacement();
             _placementUpdate.ExecuteLater(0);
         }
 
@@ -612,7 +699,8 @@ namespace NKStudio.TabularEditor.Window
                 ? Selection.Anchor.Column
                 : _pressedColumnIndex;
 
-            Selection.SetRange(MinRow, firstColumn, MaxRow, _pressedColumnIndex, CellSelectionKind.Columns);
+            Selection.SetRange(0, firstColumn, MaxRow, _pressedColumnIndex, CellSelectionKind.Columns);
+            _dragSelectMode = DragSelectMode.Columns;
             FocusGrid();
         }
 
@@ -623,7 +711,10 @@ namespace NKStudio.TabularEditor.Window
 
             // 셀 위에서 눌렀으면 드래그로 범위를 넓힐 준비를 한다.
             // 더블클릭은 편집 진입이므로 드래그를 걸지 않는다. 걸어두면 손떨림 한 번에 편집이 닫힌다.
-            _isDragSelecting = evt.clickCount < 2 && TryGetCellAt(evt.position, out _);
+            // 행 번호·열 제목은 이 뒤에 자기 콜백에서 Rows/Columns로 바꾼다.
+            _dragSelectMode = evt.clickCount < 2 && TryGetCellAt(evt.position, out _)
+                ? DragSelectMode.Cells
+                : DragSelectMode.None;
         }
 
         private void OnColumnMenuButtonPointerDown(PointerDownEvent evt)
@@ -653,12 +744,12 @@ namespace NKStudio.TabularEditor.Window
 
         private void RequestSort(int columnIndex, bool descending)
         {
-            // 정렬할 데이터 행이 둘 이상일 때만 의미가 있다. 아니면 Undo 목록에 빈 작업만 남는다.
-            if (_document == null || MaxRow <= MinRow)
+            // 헤더 행을 뺀 데이터 행이 둘 이상일 때만 의미가 있다. 아니면 Undo 목록에 빈 작업만 남는다.
+            if (_document == null || MaxRow <= HeaderRowCount)
                 return;
 
             CommitEdit();
-            CommandRequested?.Invoke(new SortRowsCommand(MinRow, columnIndex, descending));
+            CommandRequested?.Invoke(new SortRowsCommand(HeaderRowCount, columnIndex, descending));
         }
 
         private void OnResizerPointerDown(PointerDownEvent evt)
@@ -715,23 +806,40 @@ namespace NKStudio.TabularEditor.Window
             _placementUpdate.ExecuteLater(0);
         }
 
-        // 드래그로 셀 범위를 넓힌다. 누른 셀이 anchor로 남고 지나가는 셀이 focus가 된다.
+        // 드래그로 범위를 넓힌다. 누른 곳이 anchor로 남고 지나가는 곳이 focus가 된다.
+        // 셀에서 시작하면 셀 범위, 행 번호에서 시작하면 행 전체, 열 제목에서 시작하면 열 전체를 넓힌다.
         private void OnGridPointerMove(PointerMoveEvent evt)
         {
-            if (!_isDragSelecting)
+            if (_dragSelectMode == DragSelectMode.None)
                 return;
 
             // 편집 중이면 드래그 선택을 하지 않는다. 편집을 커밋해 버리면 안 된다.
             if (_isEditing)
             {
-                _isDragSelecting = false;
+                _dragSelectMode = DragSelectMode.None;
                 return;
             }
 
             // 버튼을 놓으면 끝낸다. PointerUp이 캡처에 먹혀 오지 않을 수 있어 여기서도 확인한다.
             if ((evt.pressedButtons & 1) == 0)
             {
-                _isDragSelecting = false;
+                _dragSelectMode = DragSelectMode.None;
+                return;
+            }
+
+            if (_dragSelectMode == DragSelectMode.Rows)
+            {
+                if (TryGetRowAt(evt.position, out int row) && row != Selection.Focus.Row)
+                    Selection.SetRange(Selection.Anchor.Row, 0, row, MaxColumn, CellSelectionKind.Rows);
+
+                return;
+            }
+
+            if (_dragSelectMode == DragSelectMode.Columns)
+            {
+                if (TryGetColumnAtX(evt.position.x, out int column) && column != Selection.Focus.Column)
+                    Selection.SetRange(0, Selection.Anchor.Column, MaxRow, column, CellSelectionKind.Columns);
+
                 return;
             }
 
@@ -747,7 +855,69 @@ namespace NKStudio.TabularEditor.Window
 
         private void OnGridPointerUp(PointerUpEvent evt)
         {
-            _isDragSelecting = false;
+            _dragSelectMode = DragSelectMode.None;
+        }
+
+        // 행 번호 드래그용: 세로 위치만으로 어떤 행 위인지 판별한다. 거터 밖(셀 위)으로 나가도 행을 따라간다.
+        private bool TryGetRowAt(Vector2 position, out int row)
+        {
+            row = -1;
+
+            foreach (TableRowElement candidate in _boundRows)
+            {
+                VisualElement rowNumber = candidate.RowNumberCell;
+
+                if (rowNumber.userData is not TableCellBinding binding || binding.Row < 0)
+                    continue;
+
+                Rect bound = rowNumber.worldBound;
+
+                if (position.y < bound.yMin || position.y >= bound.yMax || !IsInSameArea(rowNumber, position))
+                    continue;
+
+                row = binding.Row;
+                return true;
+            }
+
+            return false;
+        }
+
+        // 열 제목 드래그용: 가로 위치만으로 어떤 열 위인지 판별한다. 헤더 아래(셀 위)로 내려가도 열을 따라간다.
+        private bool TryGetColumnAtX(float x, out int columnIndex)
+        {
+            columnIndex = -1;
+
+            if (x < _scrollView.contentViewport.worldBound.xMin + RowNumberColumnWidth)
+                return false;
+
+            foreach (VisualElement headerCell in _headerCells)
+            {
+                if (headerCell.userData is not TableCellBinding binding || binding.Column < 0)
+                    continue;
+
+                Rect bound = headerCell.worldBound;
+
+                if (x < bound.xMin || x >= bound.xMax)
+                    continue;
+
+                columnIndex = binding.Column;
+                return true;
+            }
+
+            return false;
+        }
+
+        // 본문 행은 스크롤로 고정 헤더 패널 뒤(위쪽)까지 밀려 올라가 있을 수 있다. 그 자리는 고정 행이 덮고 있으므로,
+        // 좌표가 고정 패널 안이면 고정 행의 요소만, 밖이면 본문 요소만 인정한다.
+        private bool IsInSameArea(VisualElement element, Vector2 position)
+        {
+            bool overFrozenPane = HeaderRowCount > 0 && _frozenPane.worldBound.Contains(position);
+            bool isFrozenElement = _frozenPane.Contains(element);
+
+            if (overFrozenPane)
+                return isFrozenElement;
+
+            return isFrozenElement == false && position.y >= _scrollView.contentViewport.worldBound.yMin;
         }
 
         // 행 번호 열은 가로 스크롤해도 왼쪽에 고정된다. 스크롤한 만큼 오른쪽으로 밀어 뷰포트 왼쪽 끝에 붙여 둔다.
@@ -779,7 +949,7 @@ namespace NKStudio.TabularEditor.Window
                 return false;
             }
 
-            _listView.Query<VisualElement>(className: CellClassName).ForEach(cell =>
+            _container.Query<VisualElement>(className: CellClassName).ForEach(cell =>
             {
                 if (hit)
                     return;
@@ -787,7 +957,7 @@ namespace NKStudio.TabularEditor.Window
                 if (cell.userData is not TableCellBinding binding || binding.Row < 0)
                     return;
 
-                if (!cell.worldBound.Contains(position))
+                if (!cell.worldBound.Contains(position) || !IsInSameArea(cell, position))
                     return;
 
                 found = new CellCoord(binding.Row, binding.Column);
@@ -824,14 +994,15 @@ namespace NKStudio.TabularEditor.Window
 
         private void OnDocumentCellChanged(int row, int column)
         {
-            int itemIndex = row - HeaderOffset;
-
-            if (itemIndex < 0)
+            if (row < HeaderRowCount)
             {
-                // 헤더 행이 바뀌면 열 제목만 다시 채운다.
-                BindHeaderCells();
+                if (row < _frozenRows.Count)
+                    BindRowCells(_frozenRows[row]);
+
                 return;
             }
+
+            int itemIndex = row - HeaderRowCount;
 
             if (itemIndex < _itemIndices.Count)
                 _listView.RefreshItem(itemIndex);
@@ -841,15 +1012,17 @@ namespace NKStudio.TabularEditor.Window
         {
             // 열이 추가·삭제되면 메뉴가 가리키던 열 번호가 다른 열을 가리킬 수 있다.
             _columnMenu.Close();
+            // 행이 지워져 헤더 행 수가 문서 행 수를 넘으면 줄인다. RebuildItems가 이 값으로 고정 행을 다시 만든다.
+            HeaderRowCount = Math.Min(HeaderRowCount, _document?.RowCount ?? 0);
             RebuildColumnLayout();
             RebuildItems();
-            Selection.Clamp(MinRow, _document?.RowCount ?? 1, _document?.ColumnCount ?? 1);
+            Selection.Clamp(0, _document?.RowCount ?? 1, _document?.ColumnCount ?? 1);
         }
 
         private void OnSelectionChanged()
         {
             RefreshCellStates();
-            UpdateEditFieldPlacement();
+            UpdateOverlayPlacement();
         }
 
         private void RebuildItems()
@@ -858,10 +1031,50 @@ namespace NKStudio.TabularEditor.Window
 
             int rowCount = _document?.RowCount ?? 0;
 
-            for (int index = HeaderOffset; index < rowCount; index++)
+            for (int index = HeaderRowCount; index < rowCount; index++)
                 _itemIndices.Add(index);
 
             _listView.RefreshItems();
+            RebuildFrozenRows();
+
+            // 헤더 행 수가 바뀌면 같은 선택이라도 화면 위치가 달라진다.
+            _placementUpdate.ExecuteLater(0);
+        }
+
+        // 헤더 행 개수만큼 고정 행을 두고 다시 채운다. 남는 행은 떼어 내 좌표 판별에 걸리지 않게 한다.
+        private void RebuildFrozenRows()
+        {
+            while (_frozenRows.Count < HeaderRowCount)
+            {
+                TableRowElement created = (TableRowElement)MakeRow();
+                created.AddToClassList(HeaderRowClassName);
+                created.style.height = RowHeight;
+                _frozenRows.Add(created);
+            }
+
+            for (int index = 0; index < _frozenRows.Count; index++)
+            {
+                TableRowElement row = _frozenRows[index];
+
+                if (index >= HeaderRowCount)
+                {
+                    UnbindRow(row, -1);
+                    row.RemoveFromHierarchy();
+                    continue;
+                }
+
+                if (row.parent != _frozenContent)
+                    _frozenContent.Add(row);
+
+                row.DocumentRow = index;
+                _boundRows.Add(row);
+                row.RowNumberCell.style.left = _scrollView.scrollOffset.x;
+                BindRowNumberCell(row.RowNumberCell, index);
+                BindRowCells(row);
+            }
+
+            _frozenPane.style.display = HeaderRowCount > 0 ? DisplayStyle.Flex : DisplayStyle.None;
+            _frozenPane.style.height = HeaderRowCount * RowHeight;
         }
 
         // 열 개수가 바뀌었을 수 있으므로 폭 목록을 맞추고 보이는 열을 처음부터 다시 채운다.
@@ -960,6 +1173,7 @@ namespace NKStudio.TabularEditor.Window
             foreach (TableRowElement row in _boundRows)
                 BindRowCells(row);
 
+            _frozenContent.style.width = ContentWidth;
             BindHeaderCells();
         }
 
@@ -1044,7 +1258,7 @@ namespace NKStudio.TabularEditor.Window
                 headerCell.style.display = DisplayStyle.Flex;
                 headerCell.style.left = RowNumberColumnWidth + _columnLefts[columnIndex];
                 headerCell.style.width = _columnWidths[columnIndex];
-                headerCell.Q<Label>(className: ColumnHeaderTitleClassName).text = GetColumnTitle(columnIndex);
+                headerCell.Q<Label>(className: ColumnHeaderTitleClassName).text = GetSpreadsheetColumnName(columnIndex);
             }
 
             RefreshColumnHeaderStates();
@@ -1066,11 +1280,11 @@ namespace NKStudio.TabularEditor.Window
             if (element is not TableRowElement row)
                 return;
 
-            row.ItemIndex = itemIndex;
+            row.DocumentRow = itemIndex + HeaderRowCount;
             _boundRows.Add(row);
 
             row.RowNumberCell.style.left = _scrollView.scrollOffset.x;
-            BindRowNumberCell(row.RowNumberCell, itemIndex);
+            BindRowNumberCell(row.RowNumberCell, row.DocumentRow);
             BindRowCells(row);
         }
 
@@ -1080,7 +1294,7 @@ namespace NKStudio.TabularEditor.Window
             if (element is not TableRowElement row)
                 return;
 
-            row.ItemIndex = -1;
+            row.DocumentRow = -1;
             _boundRows.Remove(row);
 
             if (row.RowNumberCell.userData is TableCellBinding rowNumberBinding)
@@ -1099,7 +1313,7 @@ namespace NKStudio.TabularEditor.Window
         {
             row.style.width = ContentWidth;
 
-            int documentRow = row.ItemIndex + HeaderOffset;
+            int documentRow = row.DocumentRow;
             int visibleCount = _document != null ? _lastVisibleColumn - _firstVisibleColumn + 1 : 0;
 
             while (row.Cells.Count < visibleCount)
@@ -1143,19 +1357,6 @@ namespace NKStudio.TabularEditor.Window
             }
         }
 
-        private string GetColumnTitle(int columnIndex)
-        {
-            if (UseFirstRowAsHeader && _document != null && _document.RowCount > 1)
-            {
-                string header = _document.GetCell(0, columnIndex);
-
-                if (!string.IsNullOrEmpty(header))
-                    return header;
-            }
-
-            return GetSpreadsheetColumnName(columnIndex);
-        }
-
         /// <summary>
         /// 열 인덱스를 스프레드시트식 알파벳 이름으로 변환합니다.
         /// </summary>
@@ -1194,10 +1395,8 @@ namespace NKStudio.TabularEditor.Window
             return cell;
         }
 
-        private void BindRowNumberCell(VisualElement element, int itemIndex)
+        private void BindRowNumberCell(VisualElement element, int row)
         {
-            int row = itemIndex + HeaderOffset;
-
             if (element.userData is TableCellBinding binding)
             {
                 binding.Row = row;
@@ -1236,6 +1435,7 @@ namespace NKStudio.TabularEditor.Window
                 : binding.Row;
 
             Selection.SetRange(firstRow, 0, binding.Row, MaxColumn, CellSelectionKind.Rows);
+            _dragSelectMode = DragSelectMode.Rows;
             FocusGrid();
         }
 
@@ -1311,6 +1511,7 @@ namespace NKStudio.TabularEditor.Window
             AppendClipboardActions(evt.menu);
         }
 
+        // 헤더 행 설정은 행 단위 작업이라 행 번호 메뉴에만 둔다. 셀 메뉴에는 넣지 않는다.
         private void BuildRowNumberContextMenu(ContextualMenuPopulateEvent evt)
         {
             if (_document == null)
@@ -1327,6 +1528,8 @@ namespace NKStudio.TabularEditor.Window
             AppendRowActions(evt.menu);
             evt.menu.AppendSeparator();
             AppendClipboardActions(evt.menu);
+            evt.menu.AppendSeparator();
+            AppendHeaderRowActions(evt.menu);
         }
 
         private void BuildColumnHeaderContextMenu(ContextualMenuPopulateEvent evt)
@@ -1344,7 +1547,7 @@ namespace NKStudio.TabularEditor.Window
                 return;
 
             if (columnIndex < Selection.MinColumn || columnIndex > Selection.MaxColumn)
-                Selection.SetRange(MinRow, columnIndex, MaxRow, columnIndex, CellSelectionKind.Columns);
+                Selection.SetRange(0, columnIndex, MaxRow, columnIndex, CellSelectionKind.Columns);
 
             evt.menu.AppendAction("오름차순 정렬", _ => RequestSort(columnIndex, false));
             evt.menu.AppendAction("내림차순 정렬", _ => RequestSort(columnIndex, true));
@@ -1399,6 +1602,22 @@ namespace NKStudio.TabularEditor.Window
             menu.AppendAction("내용 지우기", _ => ClearRequested?.Invoke());
         }
 
+        // 헤더 행은 문서 데이터가 아니라 보기 설정이라 Undo에 넣지 않는다. 저장(.meta)은 이벤트를 받은 창이 맡는다.
+        private void AppendHeaderRowActions(DropdownMenu menu)
+        {
+            int headerRowCount = Selection.MaxRow + 1;
+
+            // 이미 선택한 행까지 헤더면 바뀌는 게 없으므로 고를 수 없게 한다.
+            menu.AppendAction(
+                "선택 항목까지 헤더 행 설정",
+                _ => HeaderRowsRequested?.Invoke(headerRowCount),
+                _ => HeaderRowCount != headerRowCount ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+            menu.AppendAction(
+                "헤더 행 설정 해제",
+                _ => HeaderRowsRequested?.Invoke(0),
+                _ => HeaderRowCount > 0 ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
+        }
+
         private bool CanRemoveRows(int count)
         {
             return _document != null && _document.RowCount - count >= 1;
@@ -1412,7 +1631,7 @@ namespace NKStudio.TabularEditor.Window
         private void RequestInsertRows(int index, int count)
         {
             CommandRequested?.Invoke(new InsertRowsCommand(index, count));
-            SetActiveCell(new CellCoord(index, Selection.Focus.Column), false);
+            SetActiveCell(new CellCoord(index, Selection.Anchor.Column), false);
         }
 
         private void RequestRemoveRows(int index, int count)
@@ -1423,7 +1642,7 @@ namespace NKStudio.TabularEditor.Window
         private void RequestInsertColumns(int index, int count)
         {
             CommandRequested?.Invoke(new InsertColumnsCommand(index, count));
-            SetActiveCell(new CellCoord(Selection.Focus.Row, index), false);
+            SetActiveCell(new CellCoord(Selection.Anchor.Row, index), false);
         }
 
         private void RequestRemoveColumns(int index, int count)
@@ -1433,8 +1652,8 @@ namespace NKStudio.TabularEditor.Window
 
         private void RefreshCellStates()
         {
-            _listView.Query<VisualElement>(className: CellClassName).ForEach(UpdateCellState);
-            _listView.Query<VisualElement>(className: RowNumberClassName).ForEach(UpdateRowNumberState);
+            _container.Query<VisualElement>(className: CellClassName).ForEach(UpdateCellState);
+            _container.Query<VisualElement>(className: RowNumberClassName).ForEach(UpdateRowNumberState);
             RefreshColumnHeaderStates();
         }
 
@@ -1478,7 +1697,7 @@ namespace NKStudio.TabularEditor.Window
             if (binding.Row < 0 || binding.Column < 0)
                 return;
 
-            bool isActive = Selection.Focus.Row == binding.Row && Selection.Focus.Column == binding.Column;
+            bool isActive = Selection.Anchor.Row == binding.Row && Selection.Anchor.Column == binding.Column;
             bool isSelected = Selection.Contains(binding.Row, binding.Column);
             bool isMatch = _matches != null && _matches.Contains(new CellCoord(binding.Row, binding.Column));
 
@@ -1488,11 +1707,106 @@ namespace NKStudio.TabularEditor.Window
             cell.EnableInClassList(EditingClassName, _isEditing && isActive);
         }
 
+        private void UpdateOverlayPlacement()
+        {
+            UpdateEditFieldPlacement();
+            UpdateSelectionBoxPlacement();
+        }
+
+        // 선택 범위 전체를 하나의 테두리로 감싸고 오른쪽 아래에 핸들을 단다.
+        // 범위 일부가 화면 밖에 있어도 맞게 그리도록 셀 요소가 아니라 열 폭·행 높이·스크롤 위치로 계산한다.
+        // 고정 헤더 행과 본문은 세로 스크롤이 따로라서 범위를 두 구간으로 나눠 구역마다 테두리를 그린다.
+        private void UpdateSelectionBoxPlacement()
+        {
+            float viewportWidth = _scrollView.contentViewport.layout.width;
+            bool canPlace = _document != null && _columnWidths.Count > 0 && !float.IsNaN(viewportWidth) && viewportWidth > 0f;
+
+            if (canPlace == false)
+            {
+                _frozenSelectionLayer.style.display = DisplayStyle.None;
+                _selectionLayer.style.display = DisplayStyle.None;
+                return;
+            }
+
+            int lastFrozenRow = HeaderRowCount - 1;
+            bool isHandleInFrozenPane = Selection.MaxRow <= lastFrozenRow;
+
+            PlaceSelectionSegment(
+                _frozenSelectionLayer,
+                _frozenSelectionBox,
+                _frozenPane,
+                Selection.MinRow,
+                Math.Min(Selection.MaxRow, lastFrozenRow),
+                0,
+                0f,
+                isHandleInFrozenPane);
+
+            PlaceSelectionSegment(
+                _selectionLayer,
+                _selectionBox,
+                _scrollView.contentViewport,
+                Math.Max(Selection.MinRow, HeaderRowCount),
+                Selection.MaxRow,
+                HeaderRowCount,
+                _scrollView.scrollOffset.y,
+                isHandleInFrozenPane == false);
+        }
+
+        // area 안에 firstRow~lastRow 구간의 테두리를 놓는다. 레이어는 area의 데이터 영역(고정 행 번호 열 오른쪽)만 덮고
+        // 넘치는 부분을 잘라, 테두리가 행 번호·열 제목 위로 나오지 않는다. areaFirstRow는 area 맨 위 행의 문서 인덱스다.
+        private void PlaceSelectionSegment(
+            VisualElement layer,
+            VisualElement box,
+            VisualElement area,
+            int firstRow,
+            int lastRow,
+            int areaFirstRow,
+            float scrollY,
+            bool showHandle)
+        {
+            Rect areaLayout = area.layout;
+            bool isAreaVisible = area.resolvedStyle.display != DisplayStyle.None && !float.IsNaN(areaLayout.height);
+
+            if (firstRow > lastRow || isAreaVisible == false)
+            {
+                layer.style.display = DisplayStyle.None;
+                return;
+            }
+
+            layer.style.display = DisplayStyle.Flex;
+
+            // 고정 패널은 세로 스크롤바 자리까지 넓으므로 폭은 본문 뷰포트에 맞춘다.
+            float viewportWidth = _scrollView.contentViewport.layout.width;
+            Vector2 areaOrigin = area.ChangeCoordinatesTo(_container, Vector2.zero);
+            layer.style.left = areaOrigin.x + RowNumberColumnWidth;
+            layer.style.top = areaOrigin.y;
+            layer.style.width = Math.Max(0f, viewportWidth - RowNumberColumnWidth);
+            layer.style.height = areaLayout.height;
+
+            int firstColumn = Math.Clamp(Selection.MinColumn, 0, _columnWidths.Count - 1);
+            int lastColumn = Math.Clamp(Selection.MaxColumn, firstColumn, _columnWidths.Count - 1);
+            float scrollX = _scrollView.scrollOffset.x;
+
+            float left = _columnLefts[firstColumn] - scrollX;
+            float right = _columnLefts[lastColumn + 1] - scrollX;
+            float top = (firstRow - areaFirstRow) * RowHeight - scrollY;
+            float bottom = (lastRow - areaFirstRow + 1) * RowHeight - scrollY;
+
+            // 테두리가 셀 경계선 위에 걸치도록 한 픽셀씩 바깥으로 넓힌다.
+            box.style.left = left - 1f;
+            box.style.top = top - 1f;
+            box.style.width = right - left + 1f;
+            box.style.height = bottom - top + 1f;
+
+            VisualElement handle = box.Q(className: SelectionHandleClassName);
+            handle.style.display = showHandle ? DisplayStyle.Flex : DisplayStyle.None;
+        }
+
         // 편집 필드는 항상 활성 셀 위에 놓여 있고 항상 포커스를 유지한다.
         // 그래야 한글 IME 조합이 첫 자모부터 필드에서 직접 시작되어 끊기지 않는다.
         private void UpdateEditFieldPlacement()
         {
-            VisualElement cell = FindCellElement(Selection.Focus);
+            VisualElement cell = FindCellElement(Selection.Anchor);
 
             if (cell == null)
                 return;
@@ -1557,12 +1871,12 @@ namespace NKStudio.TabularEditor.Window
             if (string.IsNullOrEmpty(evt.newValue))
                 return;
 
-            _isDragSelecting = false;
+            _dragSelectMode = DragSelectMode.None;
 
             // 유휴 상태에서는 위치가 어긋나 있을 수 있으므로 보이기 직전에 활성 셀 위로 확정한다.
             UpdateEditFieldPlacement();
 
-            _editingCoord = Selection.Focus;
+            _editingCoord = Selection.Anchor;
             _editOriginalValue = _document.GetCell(_editingCoord.Row, _editingCoord.Column);
             _isEditing = true;
             _isTypingEntry = true;
@@ -1583,7 +1897,7 @@ namespace NKStudio.TabularEditor.Window
         {
             VisualElement found = null;
 
-            _listView.Query<VisualElement>(className: CellClassName).ForEach(cell =>
+            _container.Query<VisualElement>(className: CellClassName).ForEach(cell =>
             {
                 if (found != null)
                     return;
@@ -1634,14 +1948,24 @@ namespace NKStudio.TabularEditor.Window
             _scrollView.scrollOffset = offset;
         }
 
-        // ListView가 재활용하는 한 행입니다. 행 번호 셀은 고정이고, 데이터 셀은 보이는 열 수만큼만 둔다.
+        private enum DragSelectMode
+        {
+            None,
+            Cells,
+            Rows,
+            Columns,
+        }
+
+        // 한 행입니다. 본문은 ListView가 재활용하고, 고정 헤더 행은 같은 요소를 그리드가 직접 둔다.
+        // 행 번호 셀은 고정이고, 데이터 셀은 보이는 열 수만큼만 둔다.
         private sealed class TableRowElement : VisualElement
         {
             public VisualElement RowNumberCell { get; set; }
 
             public List<VisualElement> Cells { get; } = new();
 
-            public int ItemIndex { get; set; } = -1;
+            // 문서 기준 행 인덱스다. 풀로 돌아가 있으면 -1이다.
+            public int DocumentRow { get; set; } = -1;
         }
     }
 }

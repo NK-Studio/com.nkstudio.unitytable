@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text;
 
 namespace NKStudio.TabularEditor.Data
 {
@@ -21,6 +22,42 @@ namespace NKStudio.TabularEditor.Data
         public static char GetDelimiter(TableFormat format)
         {
             return format == TableFormat.Tsv ? '\t' : ',';
+        }
+
+        /// <summary>
+        /// 상태 표시줄에 보일 인코딩 이름입니다. BOM이 있으면 따로 표시합니다. 예: "UTF-8", "UTF-8 BOM", "UTF-16 LE".
+        /// </summary>
+        public static string DescribeEncoding(Encoding encoding)
+        {
+            if (encoding == null)
+                return "UTF-8";
+
+            bool hasBom = encoding.GetPreamble().Length > 0;
+
+            if (encoding is UTF8Encoding)
+                return hasBom ? "UTF-8 BOM" : "UTF-8";
+
+            if (encoding is UnicodeEncoding)
+                return encoding.CodePage == 1201 ? "UTF-16 BE" : "UTF-16 LE";
+
+            return encoding.WebName.ToUpperInvariant();
+        }
+
+        /// <summary>
+        /// 상태 표시줄에 보일 개행 이름입니다. "LF" 또는 "CRLF"입니다.
+        /// </summary>
+        public static string DescribeNewLine(string newLine)
+        {
+            return newLine == "\r\n" ? "CRLF" : "LF";
+        }
+
+        /// <summary>
+        /// 상태 표시줄에 보일 구분 기호·따옴표 설명입니다. 따옴표는 구분자·따옴표·개행이 든 셀에만 붙이므로 "최소"입니다.
+        /// </summary>
+        public static string DescribeDelimiter(TableFormat format)
+        {
+            string delimiter = format == TableFormat.Tsv ? "Tab" : ",";
+            return $"구분 기호=[{delimiter}], 따옴표=[\"](최소)";
         }
 
         /// <summary>

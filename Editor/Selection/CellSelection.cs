@@ -3,7 +3,8 @@ using System;
 namespace NKStudio.TabularEditor.Selection
 {
     /// <summary>
-    /// 활성 셀과 선택 범위를 관리합니다. anchor는 범위의 고정점, focus는 활성 셀입니다.
+    /// 활성 셀과 선택 범위를 관리합니다. 스프레드시트처럼 anchor는 범위를 시작한 셀이자 활성 셀이고,
+    /// focus는 드래그·Shift 확장으로 움직이는 범위의 반대쪽 끝입니다.
     /// </summary>
     public sealed class CellSelection
     {
@@ -11,12 +12,12 @@ namespace NKStudio.TabularEditor.Selection
         private CellCoord _focus;
 
         /// <summary>
-        /// 범위 확장의 기준이 되는 고정 셀입니다.
+        /// 범위를 시작한 고정 셀이자 활성 셀입니다. 편집 대상이며 범위를 넓혀도 움직이지 않습니다.
         /// </summary>
         public CellCoord Anchor => _anchor;
 
         /// <summary>
-        /// 현재 활성 셀입니다. 편집과 스크롤 추적의 대상입니다.
+        /// 범위의 움직이는 끝입니다. 범위 확장과 스크롤 추적의 대상입니다.
         /// </summary>
         public CellCoord Focus => _focus;
 
@@ -71,7 +72,7 @@ namespace NKStudio.TabularEditor.Selection
         }
 
         /// <summary>
-        /// anchor를 유지한 채 활성 셀을 옮겨 범위를 확장합니다.
+        /// anchor(활성 셀)를 유지한 채 범위의 끝을 옮겨 범위를 확장합니다.
         /// </summary>
         /// <param name="coord">확장할 셀 좌표입니다.</param>
         public void ExtendTo(CellCoord coord)

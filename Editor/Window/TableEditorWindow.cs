@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using System.IO;
 using System.Threading.Tasks;
 using NKStudio.TabularEditor.Commands;
@@ -14,20 +15,20 @@ namespace NKStudio.TabularEditor.Window
     /// <summary>
     /// CSV/TSV 파일을 스프레드시트처럼 편집하는 에디터 윈도우입니다.
     /// 문서 수명, 파일 저장, Undo 스택 관리를 담당합니다.
+    /// 테마는 창 오른쪽 위 ⋮ 메뉴(<see cref="IHasCustomMenu"/>)에서 바꿉니다.
     /// </summary>
-    public sealed class TableEditorWindow : EditorWindow
+    public sealed class TableEditorWindow : EditorWindow, IHasCustomMenu
     {
         private const string UxmlPath =
             "Packages/com.nkstudio.unitytable/Editor/Window/TableEditorWindow.uxml";
+
+        private const string ExternalChangeBarHiddenClassName = "table-editor__external-change-bar--hidden";
 
         // 작은 파일은 한 프레임 안에 끝나므로, 그보다 오래 걸릴 때만 안내를 띄워 깜박임을 막는다.
         private const long LoadingOverlayDelayMs = 150;
 
         [SerializeField]
         private string assetPath = string.Empty;
-
-        [SerializeField]
-        private bool useFirstRowAsHeader = true;
 
         private readonly TableCommandStack _commandStack = new();
 
@@ -36,15 +37,15 @@ namespace NKStudio.TabularEditor.Window
         private TableSearchController _searchController;
         private TableInputRouter _inputRouter;
 
-        private ToolbarButton _saveButton;
-        private ToolbarButton _reloadButton;
         private ToolbarButton _searchButton;
         private Button _addRowButton;
         private Button _addColumnButton;
-        private ToolbarToggle _headerToggle;
         private Label _positionLabel;
         private Label _sizeLabel;
         private Label _stateLabel;
+        private Label _encodingLabel;
+        private Label _newLineLabel;
+        private Label _delimiterLabel;
 
         private string _loadedFileHash = string.Empty;
 
@@ -53,6 +54,19 @@ namespace NKStudio.TabularEditor.Window
         private bool _isLoading;
         private Label _loadingOverlay;
         private IVisualElementScheduledItem _loadingOverlayReveal;
+
+        // 에디터 밖(Finder·다른 편집기)에서 파일이 바뀌는 것을 감시한다.
+        private TableFileWatcher _fileWatcher;
+
+        // 다시 읽는 동안 들어온 변경은 다 읽은 뒤 한 번 더 확인한다.
+        private bool _isRecheckPendingAfterLoad;
+
+        // 알림 바로 이미 알린 파일 해시다. 같은 변경으로 바를 다시 띄우지 않는다.
+        private string _notifiedFileHash;
+
+        private VisualElement _externalChangeBar;
+        private Button _externalReloadButton;
+        private Button _externalDismissButton;
 
         /// <summary>
         /// 지정한 파일을 테이블 에디터로 엽니다. 이미 같은 파일을 연 창이 있으면 그 창을 활성화합니다.
@@ -105,6 +119,8 @@ namespace NKStudio.TabularEditor.Window
             }
 
             CacheToolbarElements();
+            CacheExternalChangeBar();
+            ApplyTheme();
 
             _gridView = new TableGridView(gridContainer);
             _gridView.CommandRequested += OnCommandRequested;
@@ -113,8 +129,10 @@ namespace NKStudio.TabularEditor.Window
             _gridView.CutRequested += CutSelection;
             _gridView.PasteRequested += PasteClipboard;
             _gridView.ClearRequested += ClearSelection;
+            _gridView.HeaderRowsRequested += OnHeaderRowsRequested;
 
             _searchController = new TableSearchController(rootVisualElement, _gridView);
+            _searchController.CommandRequested += OnCommandRequested;
 
             _inputRouter = new TableInputRouter(rootVisualElement, _gridView, _searchController);
             _inputRouter.SaveRequested += SaveDocument;
@@ -130,11 +148,6 @@ namespace NKStudio.TabularEditor.Window
 
             RegisterToolbarCallbacks();
 
-            _gridView.SetUseFirstRowAsHeader(useFirstRowAsHeader);
-
-            if (_headerToggle != null)
-                _headerToggle.SetValueWithoutNotify(useFirstRowAsHeader);
-
             CreateLoadingOverlay(gridContainer);
 
             // Open()이 CreateGUI보다 먼저 불러오기를 시작하므로, 이미 진행 중이거나 끝났으면 다시 읽지 않는다.
@@ -147,8 +160,18 @@ namespace NKStudio.TabularEditor.Window
                 LoadDocument(assetPath);
         }
 
+        private void OnEnable()
+        {
+            TableEditorTheme.Changed += ApplyTheme;
+        }
+
         private void OnDisable()
         {
+            TableEditorTheme.Changed -= ApplyTheme;
+
+            _fileWatcher?.Dispose();
+            _fileWatcher = null;
+
             if (_inputRouter != null)
             {
                 _inputRouter.SaveRequested -= SaveDocument;
@@ -163,8 +186,12 @@ namespace NKStudio.TabularEditor.Window
                 _inputRouter = null;
             }
 
-            _searchController?.Dispose();
-            _searchController = null;
+            if (_searchController != null)
+            {
+                _searchController.CommandRequested -= OnCommandRequested;
+                _searchController.Dispose();
+                _searchController = null;
+            }
 
             if (_gridView != null)
             {
@@ -174,6 +201,7 @@ namespace NKStudio.TabularEditor.Window
                 _gridView.CutRequested -= CutSelection;
                 _gridView.PasteRequested -= PasteClipboard;
                 _gridView.ClearRequested -= ClearSelection;
+                _gridView.HeaderRowsRequested -= OnHeaderRowsRequested;
                 _gridView.Dispose();
                 _gridView = null;
             }
@@ -181,6 +209,31 @@ namespace NKStudio.TabularEditor.Window
             _commandStack.Changed -= OnCommandStackChanged;
 
             UnregisterToolbarCallbacks();
+
+            if (_externalReloadButton != null)
+                _externalReloadButton.clicked -= ReloadFromDisk;
+
+            if (_externalDismissButton != null)
+                _externalDismissButton.clicked -= HideExternalChangeBar;
+        }
+
+        /// <summary>
+        /// 창 오른쪽 위 ⋮ 메뉴에 테마 선택 항목을 추가합니다.
+        /// </summary>
+        public void AddItemsToMenu(GenericMenu menu)
+        {
+            foreach (TableEditorThemeStyle style in Enum.GetValues(typeof(TableEditorThemeStyle)))
+            {
+                menu.AddItem(
+                    new GUIContent($"테마/{TableEditorTheme.DisplayName(style)}"),
+                    TableEditorTheme.Style == style,
+                    () => TableEditorTheme.Style = style);
+            }
+        }
+
+        private void ApplyTheme()
+        {
+            TableEditorTheme.Apply(rootVisualElement.Q<VisualElement>("table-editor"));
         }
 
         /// <summary>
@@ -207,21 +260,29 @@ namespace NKStudio.TabularEditor.Window
         /// <param name="projectRelativePath">읽을 파일의 프로젝트 상대 경로입니다.</param>
         public void LoadDocument(string projectRelativePath)
         {
+            LoadDocument(projectRelativePath, false);
+        }
+
+        // preserveView는 같은 파일을 다시 읽을 때다. 불러오는 중 안내를 띄우지 않고 선택·스크롤·열 폭을 유지한다.
+        private void LoadDocument(string projectRelativePath, bool preserveView)
+        {
             assetPath = projectRelativePath ?? string.Empty;
             int version = ++_loadVersion;
 
+            WatchFile(assetPath);
+
             if (string.IsNullOrEmpty(assetPath))
             {
-                ApplyLoadedDocument(CreateEmptyDocument(), string.Empty);
+                ApplyLoadedDocument(CreateEmptyDocument(), string.Empty, false);
                 return;
             }
 
-            BeginLoading();
-            _ = LoadDocumentInBackground(assetPath, version);
+            BeginLoading(preserveView == false);
+            _ = LoadDocumentInBackground(assetPath, version, preserveView);
         }
 
         // await 뒤의 코드는 Unity 동기화 컨텍스트를 통해 메인 스레드에서 이어진다.
-        private async Task LoadDocumentInBackground(string path, int version)
+        private async Task LoadDocumentInBackground(string path, int version, bool preserveView)
         {
             TableDocument document;
             string fileHash;
@@ -249,12 +310,13 @@ namespace NKStudio.TabularEditor.Window
             if (this == null || version != _loadVersion)
                 return;
 
-            ApplyLoadedDocument(document, fileHash);
+            ApplyLoadedDocument(document, fileHash, preserveView);
         }
 
         // 불러오는 동안에는 문서를 비워 둔다. 저장·편집·Undo가 모두 문서가 없으면 아무 것도 하지 않으므로,
         // 다 읽기 전에 Ctrl+S를 눌러 빈 내용으로 파일을 덮어쓰는 일이 생기지 않는다.
-        private void BeginLoading()
+        // 다시 읽기(showOverlay=false)에서는 그리드가 이전 내용을 계속 보여 주다가 새 내용으로 바로 바뀐다.
+        private void BeginLoading(bool showOverlay)
         {
             _isLoading = true;
             _document = null;
@@ -262,7 +324,9 @@ namespace NKStudio.TabularEditor.Window
 
             UpdateTitle();
             UpdateDirtyState();
-            ShowLoadingOverlayLater();
+
+            if (showOverlay)
+                ShowLoadingOverlayLater();
         }
 
         private void EndLoading()
@@ -274,20 +338,31 @@ namespace NKStudio.TabularEditor.Window
                 _loadingOverlay.style.display = DisplayStyle.None;
         }
 
-        private void ApplyLoadedDocument(TableDocument document, string fileHash)
+        private void ApplyLoadedDocument(TableDocument document, string fileHash, bool preserveView)
         {
             EndLoading();
 
             _document = document;
             _loadedFileHash = fileHash;
             _commandStack.Clear();
+            HideExternalChangeBar();
 
-            BindDocumentToViews();
+            BindDocumentToViews(preserveView);
+
+            // 에디터가 뒤에 있어도 바뀐 내용이 바로 보이게 다시 그린다.
+            Repaint();
+
+            if (_isRecheckPendingAfterLoad)
+            {
+                _isRecheckPendingAfterLoad = false;
+                OnFileChangedExternally();
+            }
         }
 
-        private void BindDocumentToViews()
+        private void BindDocumentToViews(bool preserveView = false)
         {
-            _gridView?.SetDocument(_document);
+            _gridView?.SetDocument(_document, preserveView);
+            _gridView?.SetHeaderRowCount(TableAssetSettings.LoadHeaderRowCount(assetPath));
             _searchController?.Refresh();
 
             UpdateTitle();
@@ -344,25 +419,19 @@ namespace NKStudio.TabularEditor.Window
 
         private void CacheToolbarElements()
         {
-            _saveButton = rootVisualElement.Q<ToolbarButton>("table-editor__save-button");
-            _reloadButton = rootVisualElement.Q<ToolbarButton>("table-editor__reload-button");
             _searchButton = rootVisualElement.Q<ToolbarButton>("table-editor__search-button");
             _addRowButton = rootVisualElement.Q<Button>("table-editor__add-row-button");
             _addColumnButton = rootVisualElement.Q<Button>("table-editor__add-column-button");
-            _headerToggle = rootVisualElement.Q<ToolbarToggle>("table-editor__header-toggle");
             _positionLabel = rootVisualElement.Q<Label>("table-editor__status-position");
             _sizeLabel = rootVisualElement.Q<Label>("table-editor__status-size");
             _stateLabel = rootVisualElement.Q<Label>("table-editor__status-state");
+            _encodingLabel = rootVisualElement.Q<Label>("table-editor__status-encoding");
+            _newLineLabel = rootVisualElement.Q<Label>("table-editor__status-newline");
+            _delimiterLabel = rootVisualElement.Q<Label>("table-editor__status-delimiter");
         }
 
         private void RegisterToolbarCallbacks()
         {
-            if (_saveButton != null)
-                _saveButton.clicked += SaveDocument;
-
-            if (_reloadButton != null)
-                _reloadButton.clicked += ReloadDocument;
-
             if (_searchButton != null)
                 _searchButton.clicked += OpenSearch;
 
@@ -371,18 +440,10 @@ namespace NKStudio.TabularEditor.Window
 
             if (_addColumnButton != null)
                 _addColumnButton.clicked += AppendColumn;
-
-            _headerToggle?.RegisterValueChangedCallback(OnHeaderToggleChanged);
         }
 
         private void UnregisterToolbarCallbacks()
         {
-            if (_saveButton != null)
-                _saveButton.clicked -= SaveDocument;
-
-            if (_reloadButton != null)
-                _reloadButton.clicked -= ReloadDocument;
-
             if (_searchButton != null)
                 _searchButton.clicked -= OpenSearch;
 
@@ -391,16 +452,15 @@ namespace NKStudio.TabularEditor.Window
 
             if (_addColumnButton != null)
                 _addColumnButton.clicked -= AppendColumn;
-
-            _headerToggle?.UnregisterValueChangedCallback(OnHeaderToggleChanged);
         }
 
-        private void OnHeaderToggleChanged(ChangeEvent<bool> evt)
+        // 헤더 행 수는 파일의 .meta에 기록해 팀원과 공유한다. 다른 도구의 userData가 있어 기록하지 못하면 반영하지 않는다.
+        private void OnHeaderRowsRequested(int headerRowCount)
         {
-            useFirstRowAsHeader = evt.newValue;
-            _gridView?.SetUseFirstRowAsHeader(evt.newValue);
-            _searchController?.Refresh();
-            UpdateStatusBar();
+            if (TableAssetSettings.SaveHeaderRowCount(assetPath, headerRowCount) == false)
+                return;
+
+            _gridView?.SetHeaderRowCount(headerRowCount);
         }
 
         private void OnCommandRequested(ITableCommand command)
@@ -467,6 +527,111 @@ namespace NKStudio.TabularEditor.Window
 
             _loadedFileHash = TableDocumentIO.ComputeFileHash(assetPath);
             _commandStack.MarkSaved();
+
+            // 덮어쓰기로 결정했으니 바깥 변경 알림은 더 이상 의미가 없다.
+            HideExternalChangeBar();
+        }
+
+        private void WatchFile(string projectRelativePath)
+        {
+            string fullPath = string.IsNullOrEmpty(projectRelativePath) ? string.Empty : Path.GetFullPath(projectRelativePath);
+
+            if (_fileWatcher != null && _fileWatcher.FullPath == fullPath)
+                return;
+
+            _fileWatcher?.Dispose();
+            _fileWatcher = null;
+
+            if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
+                return;
+
+            _fileWatcher = new TableFileWatcher(fullPath, OnFileChangedExternally);
+        }
+
+        // 에디터 밖에서 파일이 바뀌었다. 잃을 편집이 없으면 화면을 유지한 채 다시 읽고, 있으면 알림 바로 묻는다.
+        private void OnFileChangedExternally()
+        {
+            if (string.IsNullOrEmpty(assetPath))
+                return;
+
+            if (_isLoading)
+            {
+                _isRecheckPendingAfterLoad = true;
+                return;
+            }
+
+            string fileHash;
+
+            try
+            {
+                fileHash = TableDocumentIO.ComputeFileHash(assetPath);
+            }
+            catch (IOException)
+            {
+                // 다른 프로그램이 아직 쓰는 중이라 읽을 수 없다. 조금 뒤 다시 본다.
+                _fileWatcher?.RequestRecheck();
+                return;
+            }
+
+            // 지워졌거나 이름이 바뀌어 사라진 순간이다. 다시 생기면 그때 반영한다.
+            if (string.IsNullOrEmpty(fileHash))
+                return;
+
+            bool isContentChanged = fileHash != _loadedFileHash;
+            bool isEditing = _gridView != null && _gridView.IsEditing;
+
+            switch (ExternalChangeDecision.Decide(isContentChanged, _commandStack.IsDirty, isEditing))
+            {
+                case ExternalChangeAction.Ignore:
+                    // 바깥에서 원래 내용으로 되돌렸으면 띄워 둔 알림도 거둔다.
+                    HideExternalChangeBar();
+                    return;
+
+                case ExternalChangeAction.Reload:
+                    LoadDocument(assetPath, true);
+                    return;
+
+                case ExternalChangeAction.Notify:
+                    if (fileHash == _notifiedFileHash)
+                        return;
+
+                    _notifiedFileHash = fileHash;
+                    ShowExternalChangeBar();
+                    return;
+            }
+        }
+
+        private void CacheExternalChangeBar()
+        {
+            _externalChangeBar = rootVisualElement.Q<VisualElement>("table-editor__external-change-bar");
+            _externalReloadButton = rootVisualElement.Q<Button>("table-editor__external-change-reload-button");
+            _externalDismissButton = rootVisualElement.Q<Button>("table-editor__external-change-dismiss-button");
+
+            if (_externalReloadButton != null)
+                _externalReloadButton.clicked += ReloadFromDisk;
+
+            if (_externalDismissButton != null)
+                _externalDismissButton.clicked += HideExternalChangeBar;
+        }
+
+        private void ShowExternalChangeBar()
+        {
+            _externalChangeBar?.RemoveFromClassList(ExternalChangeBarHiddenClassName);
+            Repaint();
+        }
+
+        // 무시해도 _loadedFileHash는 그대로라, 저장할 때 ConfirmExternalChange가 덮어쓸지 다시 묻는다.
+        private void HideExternalChangeBar()
+        {
+            _notifiedFileHash = null;
+            _externalChangeBar?.AddToClassList(ExternalChangeBarHiddenClassName);
+        }
+
+        // 알림 바의 [다시 불러오기]: 저장 안 한 편집을 버리고 파일 내용으로 바꾼다.
+        private void ReloadFromDisk()
+        {
+            _gridView?.CancelEdit();
+            LoadDocument(assetPath, true);
         }
 
         // 외부에서 파일이 바뀐 채로 덮어쓰면 다른 사람의 작업이 사라지므로 먼저 확인한다.
@@ -482,23 +647,6 @@ namespace NKStudio.TabularEditor.Window
                 "파일이 에디터 외부에서 변경되었습니다. 현재 편집 내용으로 덮어쓰겠습니까?",
                 "덮어쓰기",
                 "취소");
-        }
-
-        private void ReloadDocument()
-        {
-            if (_commandStack.IsDirty)
-            {
-                bool reload = EditorUtility.DisplayDialog(
-                    "다시 불러오기",
-                    "저장되지 않은 변경 사항을 버리겠습니까?",
-                    "다시 불러오기",
-                    "취소");
-
-                if (!reload)
-                    return;
-            }
-
-            LoadDocument(assetPath);
         }
 
         private void CopySelection()
@@ -580,8 +728,9 @@ namespace NKStudio.TabularEditor.Window
                 ? "새 테이블"
                 : Path.GetFileName(assetPath);
 
-            string suffix = _commandStack.IsDirty ? "*" : string.Empty;
-            titleContent = new GUIContent($"{fileName}{suffix}");
+            // 저장 안 한 표시(*)는 붙이지 않는다. hasUnsavedChanges가 켜지면 Unity 탭이 스스로 '*'를 붙이므로,
+            // 여기서도 붙이면 '**'로 두 번 보인다.
+            titleContent = new GUIContent(fileName);
         }
 
         private void UpdateStatusBar()
@@ -591,35 +740,44 @@ namespace NKStudio.TabularEditor.Window
 
             CellSelection selection = _gridView.Selection;
 
-            if (_positionLabel != null)
-            {
-                string columnName = TableGridView.GetSpreadsheetColumnName(selection.Focus.Column);
-                _positionLabel.text = $"{columnName}{selection.Focus.Row + 1}";
-            }
-
             if (_sizeLabel != null)
-                _sizeLabel.text = $"{_document.RowCount}행 x {_document.ColumnCount}열{DescribeSelection(selection)}";
+                _sizeLabel.text = $"{_document.RowCount} 행 × {_document.ColumnCount} 열";
+
+            if (_positionLabel != null)
+                _positionLabel.text = $"{selection.Anchor.Row + 1}:{selection.Anchor.Column + 1} ({DescribeSelection(selection)})";
 
             if (_stateLabel != null)
                 _stateLabel.text = _commandStack.IsDirty ? "저장되지 않음" : string.Empty;
+
+            if (_encodingLabel != null)
+                _encodingLabel.text = TableFormatUtility.DescribeEncoding(_document.FileOptions?.Encoding);
+
+            if (_newLineLabel != null)
+                _newLineLabel.text = TableFormatUtility.DescribeNewLine(_document.FileOptions?.NewLine);
+
+            if (_delimiterLabel != null)
+                _delimiterLabel.text = TableFormatUtility.DescribeDelimiter(_document.Format);
         }
 
-        // Delete 키가 무엇을 지울지 미리 알 수 있도록 선택 종류를 상태 표시줄에 드러낸다.
-        private static string DescribeSelection(CellSelection selection)
+        // 셀 하나면 그 셀의 글자 수, 범위면 셀 개수를 보여 준다(예: "4자", "54 셀").
+        // 행·열 전체를 고른 경우에는 Delete 키가 무엇을 지울지 미리 알 수 있도록 덧붙인다.
+        private string DescribeSelection(CellSelection selection)
         {
             int rows = selection.MaxRow - selection.MinRow + 1;
             int columns = selection.MaxColumn - selection.MinColumn + 1;
 
             if (selection.Kind == CellSelectionKind.Rows)
-                return $"   행 {rows}개 선택 · Delete로 삭제";
+                return $"행 {rows}개 · Delete로 삭제";
 
             if (selection.Kind == CellSelectionKind.Columns)
-                return $"   열 {columns}개 선택 · Delete로 삭제";
+                return $"열 {columns}개 · Delete로 삭제";
 
-            if (selection.IsSingleCell)
-                return string.Empty;
+            if (selection.IsSingleCell == false)
+                return $"{rows * columns} 셀";
 
-            return $"   선택 {rows} x {columns}";
+            // 한글·이모지 결합 문자를 한 글자로 센다.
+            string value = _document.GetCell(selection.Anchor.Row, selection.Anchor.Column);
+            return $"{new StringInfo(value).LengthInTextElements}자";
         }
     }
 }

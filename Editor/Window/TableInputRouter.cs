@@ -181,6 +181,20 @@ namespace NKStudio.TabularEditor.Window
                 case KeyCode.Return:
                 case KeyCode.KeypadEnter:
                 case KeyCode.F3:
+                    bool isEnter = evt.keyCode != KeyCode.F3;
+
+                    // 바꾸기 칸에서 Enter는 바꾸기, Ctrl/Cmd+Enter는 모두 바꾸기다.
+                    if (isEnter && _searchController.IsReplaceFieldFocused(GetFocusedElement()))
+                    {
+                        if (evt.actionKey)
+                            _searchController.ReplaceAll();
+                        else
+                            _searchController.ReplaceCurrent();
+
+                        Consume(evt);
+                        return;
+                    }
+
                     if (evt.shiftKey)
                         _searchController.SelectPrevious();
                     else
@@ -234,14 +248,14 @@ namespace NKStudio.TabularEditor.Window
 
                 case KeyCode.Home:
                     _gridView.SetActiveCell(
-                        new CellCoord(_gridView.Selection.Focus.Row, 0),
+                        new CellCoord(GetHomeEndRow(evt.shiftKey), 0),
                         evt.shiftKey);
                     Consume(evt);
                     return;
 
                 case KeyCode.End:
                     _gridView.SetActiveCell(
-                        new CellCoord(_gridView.Selection.Focus.Row, _gridView.MaxColumn),
+                        new CellCoord(GetHomeEndRow(evt.shiftKey), _gridView.MaxColumn),
                         evt.shiftKey);
                     Consume(evt);
                     return;
@@ -363,7 +377,7 @@ namespace NKStudio.TabularEditor.Window
                     return true;
 
                 case KeyCode.Home:
-                    _gridView.SetActiveCell(new CellCoord(_gridView.MinRow, 0), evt.shiftKey);
+                    _gridView.SetActiveCell(new CellCoord(0, 0), evt.shiftKey);
                     Consume(evt);
                     return true;
 
@@ -491,6 +505,13 @@ namespace NKStudio.TabularEditor.Window
         private VisualElement GetFocusedElement()
         {
             return _root.focusController?.focusedElement as VisualElement;
+        }
+
+        // Shift로 넓힐 때는 범위의 움직이는 끝 행을, 그냥 이동할 때는 활성 셀(범위 시작점) 행을 따른다.
+        private int GetHomeEndRow(bool extendSelection)
+        {
+            CellSelection selection = _gridView.Selection;
+            return extendSelection ? selection.Focus.Row : selection.Anchor.Row;
         }
 
         // Tab처럼 포커스를 옮기는 키를 가로챌 때는 StopPropagation만으로는 부족해 IgnoreEvent를 함께 호출한다.

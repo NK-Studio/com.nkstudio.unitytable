@@ -3,56 +3,138 @@
 
     <ui:VisualElement name="table-editor" class="table-editor">
         <uie:Toolbar class="table-editor__toolbar">
-            <uie:ToolbarButton
-                name="table-editor__save-button"
-                text="저장"
-                tooltip="변경 사항을 파일에 저장합니다. (Ctrl+S)" />
-            <uie:ToolbarButton
-                name="table-editor__reload-button"
-                text="다시 불러오기"
-                tooltip="저장하지 않은 변경 사항을 버리고 파일을 다시 읽습니다." />
-
-            <ui:VisualElement class="table-editor__toolbar-separator" />
-
-            <uie:ToolbarToggle
-                name="table-editor__header-toggle"
-                text="첫 행을 헤더로"
-                tooltip="첫 행을 열 제목으로 사용하고 편집 대상에서 제외합니다." />
-
             <ui:VisualElement class="table-editor__toolbar-spacer" />
 
             <uie:ToolbarButton
                 name="table-editor__search-button"
-                text="검색"
-                tooltip="셀 내용을 검색합니다. (Ctrl+F)" />
+                class="table-editor__toolbar-icon-button"
+                tooltip="셀 내용을 검색합니다. (Ctrl+F)">
+                <ui:VisualElement class="table-editor__icon table-editor__icon--search" />
+            </uie:ToolbarButton>
         </uie:Toolbar>
 
+        <!-- 찾기·바꾸기 바: 왼쪽 펼치기 버튼으로 바꾸기 줄을 연다. 아이콘은 Material Symbols(Icons/). -->
         <ui:VisualElement
             name="table-editor__search-bar"
             class="table-editor__search-bar table-editor__search-bar--hidden">
-            <uie:ToolbarSearchField
-                name="table-editor__search-field"
-                class="table-editor__search-field" />
+            <ui:Button
+                name="table-editor__search-expand-button"
+                class="table-editor__icon-button table-editor__search-expand-button"
+                tooltip="바꾸기 열기/닫기">
+                <ui:VisualElement class="table-editor__icon table-editor__icon--chevron" />
+            </ui:Button>
+
+            <ui:VisualElement class="table-editor__search-rows">
+                <ui:VisualElement class="table-editor__search-row">
+                    <ui:VisualElement class="table-editor__search-input">
+                        <ui:TextField name="table-editor__search-field" class="table-editor__search-field" />
+                        <ui:VisualElement class="table-editor__search-input-options">
+                            <ui:Button
+                                name="table-editor__search-case-toggle"
+                                class="table-editor__icon-button table-editor__option-toggle"
+                                tooltip="대소문자 구분">
+                                <ui:VisualElement class="table-editor__icon table-editor__icon--match-case" />
+                            </ui:Button>
+                            <ui:Button
+                                name="table-editor__search-regex-toggle"
+                                class="table-editor__icon-button table-editor__option-toggle"
+                                tooltip="정규식 사용">
+                                <ui:VisualElement class="table-editor__icon table-editor__icon--regex" />
+                            </ui:Button>
+                            <ui:Button
+                                name="table-editor__search-word-toggle"
+                                class="table-editor__icon-button table-editor__option-toggle"
+                                tooltip="단어 단위로">
+                                <ui:VisualElement class="table-editor__icon table-editor__icon--match-word" />
+                            </ui:Button>
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <ui:Button
+                        name="table-editor__search-next-button"
+                        class="table-editor__icon-button"
+                        tooltip="다음 결과 (Enter, F3)">
+                        <ui:VisualElement class="table-editor__icon table-editor__icon--next" />
+                    </ui:Button>
+                    <ui:Button
+                        name="table-editor__search-previous-button"
+                        class="table-editor__icon-button"
+                        tooltip="이전 결과 (Shift+Enter, Shift+F3)">
+                        <ui:VisualElement class="table-editor__icon table-editor__icon--previous" />
+                    </ui:Button>
+                    <ui:Button
+                        name="table-editor__search-selection-toggle"
+                        class="table-editor__icon-button table-editor__option-toggle"
+                        tooltip="선택 영역에서 찾기">
+                        <ui:VisualElement class="table-editor__icon table-editor__icon--selection" />
+                    </ui:Button>
+                    <ui:Button
+                        name="table-editor__search-vertical-toggle"
+                        class="table-editor__icon-button table-editor__option-toggle"
+                        tooltip="수직 방향으로 찾기 (왼쪽 열부터 위→아래)">
+                        <ui:VisualElement class="table-editor__icon table-editor__icon--vertical" />
+                    </ui:Button>
+
+                    <ui:Label name="table-editor__search-count" class="table-editor__search-count" text="" />
+                    <ui:VisualElement class="table-editor__toolbar-spacer" />
+
+                    <ui:Button
+                        name="table-editor__search-close-button"
+                        class="table-editor__icon-button"
+                        tooltip="닫기 (Esc)">
+                        <ui:VisualElement class="table-editor__icon table-editor__icon--close" />
+                    </ui:Button>
+                </ui:VisualElement>
+
+                <ui:VisualElement
+                    name="table-editor__replace-row"
+                    class="table-editor__search-row table-editor__replace-row--hidden">
+                    <ui:VisualElement class="table-editor__search-input table-editor__search-input--single-option">
+                        <ui:TextField name="table-editor__replace-field" class="table-editor__search-field" />
+                        <ui:VisualElement class="table-editor__search-input-options">
+                            <ui:Button
+                                name="table-editor__replace-preserve-case-toggle"
+                                class="table-editor__icon-button table-editor__option-toggle table-editor__text-toggle"
+                                text="AB"
+                                tooltip="대소문자 유지" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+
+                    <ui:Button
+                        name="table-editor__replace-button"
+                        class="table-editor__icon-button"
+                        tooltip="바꾸기 (Enter)">
+                        <ui:VisualElement class="table-editor__icon table-editor__icon--replace" />
+                    </ui:Button>
+                    <ui:Button
+                        name="table-editor__replace-all-button"
+                        class="table-editor__icon-button"
+                        tooltip="모두 바꾸기 (Ctrl/Cmd+Enter)">
+                        <ui:VisualElement class="table-editor__icon table-editor__icon--replace-all" />
+                    </ui:Button>
+                </ui:VisualElement>
+            </ui:VisualElement>
+        </ui:VisualElement>
+
+        <!-- 저장하지 않은 편집이 있는데 에디터 밖에서 파일이 바뀌면 띄운다. 편집이 없으면 묻지 않고 바로 다시 읽는다. -->
+        <ui:VisualElement
+            name="table-editor__external-change-bar"
+            class="table-editor__external-change-bar table-editor__external-change-bar--hidden">
+            <ui:VisualElement class="table-editor__icon table-editor__icon--info" />
             <ui:Label
-                name="table-editor__search-count"
-                class="table-editor__search-count"
-                text="0 / 0" />
-            <uie:ToolbarToggle
-                name="table-editor__search-case-toggle"
-                text="Aa"
-                tooltip="대소문자를 구분해 검색합니다." />
-            <uie:ToolbarButton
-                name="table-editor__search-previous-button"
-                text="이전"
-                tooltip="이전 일치 항목으로 이동합니다. (Shift+F3)" />
-            <uie:ToolbarButton
-                name="table-editor__search-next-button"
-                text="다음"
-                tooltip="다음 일치 항목으로 이동합니다. (F3)" />
-            <uie:ToolbarButton
-                name="table-editor__search-close-button"
-                text="닫기"
-                tooltip="검색을 닫습니다. (Esc)" />
+                class="table-editor__external-change-text"
+                text="파일이 에디터 밖에서 변경되었습니다. 저장하지 않은 편집이 있습니다." />
+            <ui:VisualElement class="table-editor__toolbar-spacer" />
+            <ui:Button
+                name="table-editor__external-change-reload-button"
+                class="table-editor__bar-button"
+                text="다시 불러오기"
+                tooltip="저장하지 않은 편집을 버리고 바뀐 파일 내용을 읽습니다." />
+            <ui:Button
+                name="table-editor__external-change-dismiss-button"
+                class="table-editor__bar-button"
+                text="무시"
+                tooltip="지금 편집을 유지합니다. 저장할 때 덮어쓸지 다시 묻습니다." />
         </ui:VisualElement>
 
         <ui:VisualElement class="table-editor__body">
@@ -72,19 +154,35 @@
             text="+"
             tooltip="맨 아래에 행을 추가합니다." />
 
+        <!-- 상태 표시줄: 왼쪽은 표 크기·활성 셀, 오른쪽은 파일 형식(인코딩·개행·구분 기호). -->
         <ui:VisualElement name="table-editor__status-bar" class="table-editor__status-bar">
             <ui:Label
-                name="table-editor__status-position"
+                name="table-editor__status-size"
                 class="table-editor__status-label"
                 text="—" />
             <ui:Label
-                name="table-editor__status-size"
+                name="table-editor__status-position"
                 class="table-editor__status-label"
                 text="—" />
             <ui:VisualElement class="table-editor__toolbar-spacer" />
             <ui:Label
                 name="table-editor__status-state"
                 class="table-editor__status-label"
+                text="" />
+            <ui:Label
+                name="table-editor__status-encoding"
+                class="table-editor__status-label"
+                tooltip="파일 인코딩. 저장할 때 그대로 유지합니다."
+                text="" />
+            <ui:Label
+                name="table-editor__status-newline"
+                class="table-editor__status-label"
+                tooltip="개행 문자. 저장할 때 그대로 유지합니다."
+                text="" />
+            <ui:Label
+                name="table-editor__status-delimiter"
+                class="table-editor__status-label"
+                tooltip="구분 기호와 따옴표 규칙. 따옴표는 구분 기호·따옴표·줄바꿈이 든 셀에만 붙입니다."
                 text="" />
         </ui:VisualElement>
     </ui:VisualElement>
