@@ -400,6 +400,33 @@
     margin-right: 2px;
 }
 
+/* 행으로 이동(Ctrl/Cmd+G): 표 위쪽 가운데에 뜨는 입력칸. 바깥 클릭은 열 메뉴와 같은 뒷판이 받는다. */
+.table-editor__goto {
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    translate: -50% 0;
+    width: 300px;
+    padding: 6px;
+    border-width: 1px;
+    border-radius: 4px;
+    border-color: var(--unity-colors-default-border);
+    background-color: var(--unity-colors-window-background);
+}
+
+.table-editor__goto-field {
+    margin: 0;
+}
+
+.table-editor__goto-field .unity-base-text-field__input {
+    height: 24px;
+    padding-left: 6px;
+}
+
+.table-editor__goto-field--invalid .unity-base-text-field__input {
+    border-color: #E05252;
+}
+
 /* 셀은 보이는 열만 만들어 열 위치에 절대 배치한다. left/width는 코드가 지정한다. */
 
 .table-editor__cell {
@@ -838,6 +865,12 @@
     color: var(--te-fg);
 }
 
+/* 위 규칙이 입력 글자색을 정하면서 Unity 기본 플레이스홀더 회색까지 덮는다. 안내 문구는 흐린 색으로 되돌린다. */
+.table-editor--android-studio .unity-base-text-field__input--placeholder,
+.table-editor--android-studio .unity-base-text-field__input--placeholder > TextElement {
+    color: var(--te-fg-muted);
+}
+
 .table-editor--android-studio .unity-base-text-field:focus .unity-base-text-field__input {
     border-color: var(--te-focus);
 }
@@ -941,6 +974,11 @@
 }
 
 .table-editor--android-studio .table-editor__column-menu {
+    border-color: var(--te-control-border);
+    background-color: var(--te-panel-bg);
+}
+
+.table-editor--android-studio .table-editor__goto {
     border-color: var(--te-control-border);
     background-color: var(--te-panel-bg);
 }

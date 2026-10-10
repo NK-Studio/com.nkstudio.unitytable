@@ -91,6 +91,11 @@ namespace NKStudio.TabularEditor.Window
         public event Action SearchOpenRequested;
 
         /// <summary>
+        /// 행으로 이동(Ctrl/Cmd+G) 입력칸 열기가 요청되었을 때 호출됩니다.
+        /// </summary>
+        public event Action GoToRequested;
+
+        /// <summary>
         /// 등록한 콜백을 해제합니다.
         /// </summary>
         public void Dispose()
@@ -445,6 +450,11 @@ namespace NKStudio.TabularEditor.Window
 
                 case KeyCode.F:
                     SearchOpenRequested?.Invoke();
+                    Consume(evt);
+                    return true;
+
+                case KeyCode.G:
+                    GoToRequested?.Invoke();
                     Consume(evt);
                     return true;
 

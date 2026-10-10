@@ -195,6 +195,9 @@ namespace NKStudio.TabularEditor
             ["count.replaced.one"] = ("Replaced {0} cell", "{0}개 셀 바꿈"),
             ["count.replaced.other"] = ("Replaced {0} cells", "{0}개 셀 바꿈"),
 
+            // 행으로 이동
+            ["goto.placeholder"] = ("e.g. 12, C12", "예: 12, C12"),
+
             // 우클릭·열 메뉴
             ["menu.sort"] = ("Sort", "정렬"),
             ["menu.sortAscending"] = ("Sort Ascending", "오름차순 정렬"),

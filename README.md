@@ -57,6 +57,7 @@ https://github.com/NK-Studio/com.nkstudio.unitytable.git
 | Ctrl+C / Ctrl+X / Ctrl+V | 복사 / 잘라내기 / 붙여넣기 |
 | Ctrl+A | 전체 선택 |
 | Ctrl+F | 검색 |
+| Ctrl+G | 행 또는 셀로 이동 (`120`, `C120`) |
 | F3 / Shift+F3 | 다음 / 이전 일치 항목 |
 
 macOS에서는 Ctrl 대신 Cmd, Alt 대신 Option을 사용합니다.

@@ -67,6 +67,7 @@ namespace NKStudio.TabularEditor.Window
         private string _notifiedFileHash;
 
         private TableFileFormatDialog _formatDialog;
+        private TableGoToBar _goToBar;
 
         private VisualElement _externalChangeBar;
         private Button _externalReloadButton;
@@ -151,6 +152,11 @@ namespace NKStudio.TabularEditor.Window
             _inputRouter.PasteRequested += PasteClipboard;
             _inputRouter.DeleteRequested += DeleteSelection;
             _inputRouter.SearchOpenRequested += OpenSearch;
+            _inputRouter.GoToRequested += OpenGoTo;
+
+            _goToBar = new TableGoToBar(gridContainer);
+            _goToBar.Submitted += OnGoToSubmitted;
+            _goToBar.Closed += OnGoToClosed;
 
             _commandStack.Changed += OnCommandStackChanged;
 
@@ -181,6 +187,7 @@ namespace NKStudio.TabularEditor.Window
         {
             Localization.Refresh(rootVisualElement);
             _formatDialog?.Close();
+            _goToBar?.Close();
             _searchController?.RefreshLanguage();
             UpdateTitle();
             UpdateDirtyState();
@@ -213,6 +220,14 @@ namespace NKStudio.TabularEditor.Window
 
             UnregisterFormatLabelCallbacks();
 
+            if (_goToBar != null)
+            {
+                _goToBar.Submitted -= OnGoToSubmitted;
+                _goToBar.Closed -= OnGoToClosed;
+                _goToBar.Dispose();
+                _goToBar = null;
+            }
+
             if (_inputRouter != null)
             {
                 _inputRouter.SaveRequested -= SaveDocument;
@@ -223,6 +238,7 @@ namespace NKStudio.TabularEditor.Window
                 _inputRouter.PasteRequested -= PasteClipboard;
                 _inputRouter.DeleteRequested -= DeleteSelection;
                 _inputRouter.SearchOpenRequested -= OpenSearch;
+                _inputRouter.GoToRequested -= OpenGoTo;
                 _inputRouter.Dispose();
                 _inputRouter = null;
             }
@@ -887,6 +903,35 @@ namespace NKStudio.TabularEditor.Window
             _searchController?.Open();
         }
 
+        // 파일 형식 대화상자처럼 열려 있는 동안은 키 입력을 그리드로 보내지 않는다(입력칸이 Enter·Esc를 직접 받는다).
+        private void OpenGoTo()
+        {
+            if (_document == null || _gridView == null || _goToBar == null)
+                return;
+
+            _gridView.CommitEdit();
+
+            if (_inputRouter != null)
+                _inputRouter.IsModalOpen = true;
+
+            _goToBar.Open(_document.RowCount, _document.ColumnCount, _gridView.Selection.Anchor.Column);
+        }
+
+        private void OnGoToSubmitted(CellCoord target)
+        {
+            _gridView?.SetActiveCell(target, false);
+        }
+
+        // TRAP: Enter는 키 이벤트와 문자('\n') 이벤트가 따로 온다. 키 이벤트에서 닫으며 곧바로 표에 포커스를 주면
+        // 뒤이은 문자 이벤트가 표의 숨은 편집칸에 들어가 셀 편집이 시작된다. 포커스는 다음 프레임에 돌려준다.
+        private void OnGoToClosed()
+        {
+            if (_inputRouter != null)
+                _inputRouter.IsModalOpen = false;
+
+            rootVisualElement.schedule.Execute(() => _gridView?.FocusGrid()).ExecuteLater(0);
+        }
+
         private void AppendRow()
         {
             _gridView?.AppendRow();
@@ -928,7 +973,11 @@ namespace NKStudio.TabularEditor.Window
                     Localization.Count("count.column", _document.ColumnCount));
 
             if (_positionLabel != null)
-                _positionLabel.text = $"{selection.Anchor.Row + 1}:{selection.Anchor.Column + 1} ({DescribeSelection(selection)})";
+                {
+                // 열 제목(글자)과 행 번호(숫자)를 그대로 이어 쓴 셀 주소다(예: C12). Ctrl/Cmd+G에 그대로 넣을 수 있다.
+                string address = TableGridView.GetSpreadsheetColumnName(selection.Anchor.Column) + (selection.Anchor.Row + 1);
+                _positionLabel.text = $"{address} ({DescribeSelection(selection)})";
+            }
 
             if (_stateLabel != null)
                 _stateLabel.text = _commandStack.IsDirty ? Localization.Get("status.unsaved") : string.Empty;
