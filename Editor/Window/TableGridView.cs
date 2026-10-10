@@ -308,7 +308,10 @@ namespace NKStudio.TabularEditor.Window
         private void OnGridWheel(WheelEvent evt)
         {
             if (TableEditorSettings.MouseWheelZoom == false || evt.actionKey == false)
+            {
+                HandleHorizontalWheel(evt);
                 return;
+            }
 
             evt.StopPropagation();
             _zoomWheelAccumulator -= evt.delta.y;
@@ -320,6 +323,27 @@ namespace NKStudio.TabularEditor.Window
             int step = _zoomWheelAccumulator > 0f ? 1 : -1;
             _zoomWheelAccumulator = 0f;
             TableEditorSettings.FontSize += step;
+        }
+
+        // TRAP: 열은 우리가 직접 가상화해 절대 위치로 놓기 때문에, ListView의 ScrollView는 가로 휠을 스크롤로 보지 않는다
+        // (가로 스크롤바를 끄는 것은 된다). 그래서 가로 입력이 있는 휠은 여기서 직접 스크롤하고 ScrollView에는 넘기지 않는다.
+        // 컨테이너에서 받으므로 열 제목·고정 헤더 행 위에서 쓸어도 움직인다.
+        private void HandleHorizontalWheel(WheelEvent evt)
+        {
+            if (_document == null || _columnMenu.IsOpen)
+                return;
+
+            // 편집 입력칸이 줄바꿈으로 길어졌을 때 그 안의 휠은 입력칸 몫이다.
+            if (_isEditing && evt.target is VisualElement target && IsSelfOrDescendant(_editField, target))
+                return;
+
+            Vector2 max = new(_scrollView.horizontalScroller.highValue, _scrollView.verticalScroller.highValue);
+
+            if (!WheelScroll.TryCompute(evt.delta, evt.shiftKey, _scrollView.scrollOffset, max, _scrollView.mouseWheelScrollSize, out Vector2 next))
+                return;
+
+            evt.StopPropagation();
+            _scrollView.scrollOffset = next;
         }
 
         private VisualElement CreateSelectionLayer(out VisualElement box)
@@ -802,7 +826,7 @@ namespace NKStudio.TabularEditor.Window
                 values[row] = CreateFilledRow(value, SelectedColumnCount);
 
             EndEdit();
-            CommandRequested?.Invoke(new SetCellsCommand("Fill Range", Selection.MinRow, Selection.MinColumn, values));
+            CommandRequested?.Invoke(new SetCellsCommand(Localization.Get("undo.fillRange"), Selection.MinRow, Selection.MinColumn, values));
             RefreshCellStates();
         }
 
@@ -895,7 +919,7 @@ namespace NKStudio.TabularEditor.Window
             if (!string.Equals(value, _editOriginalValue, StringComparison.Ordinal))
             {
                 string[][] values = { new[] { value } };
-                CommandRequested?.Invoke(new SetCellsCommand("Edit Cell", coord.Row, coord.Column, values));
+                CommandRequested?.Invoke(new SetCellsCommand(Localization.Get("undo.editCell"), coord.Row, coord.Column, values));
             }
 
             RefreshCellStates();
@@ -2130,8 +2154,8 @@ namespace NKStudio.TabularEditor.Window
             if (columnIndex < Selection.MinColumn || columnIndex > Selection.MaxColumn)
                 Selection.SetRange(0, columnIndex, MaxRow, columnIndex, CellSelectionKind.Columns);
 
-            evt.menu.AppendAction("Sort Ascending", _ => RequestSort(columnIndex, false));
-            evt.menu.AppendAction("Sort Descending", _ => RequestSort(columnIndex, true));
+            evt.menu.AppendAction(Localization.Get("menu.sortAscending"), _ => RequestSort(columnIndex, false));
+            evt.menu.AppendAction(Localization.Get("menu.sortDescending"), _ => RequestSort(columnIndex, true));
             evt.menu.AppendSeparator();
             AppendColumnActions(evt.menu);
             evt.menu.AppendSeparator();
@@ -2143,11 +2167,11 @@ namespace NKStudio.TabularEditor.Window
             int firstRow = Selection.MinRow;
             int count = SelectedRowCount;
 
-            menu.AppendAction("Insert Row Above", _ => InsertRowsAbove());
-            menu.AppendAction("Insert Row Below", _ => InsertRowsBelow());
-            menu.AppendAction("Duplicate Row", _ => DuplicateSelectedRows());
+            menu.AppendAction(Localization.Get("menu.insertRowAbove"), _ => InsertRowsAbove());
+            menu.AppendAction(Localization.Get("menu.insertRowBelow"), _ => InsertRowsBelow());
+            menu.AppendAction(Localization.Get("menu.duplicateRow"), _ => DuplicateSelectedRows());
 
-            string label = count > 1 ? $"Delete {count} Rows" : "Delete Row";
+            string label = count > 1 ? Localization.Format("menu.deleteRows", count) : Localization.Get("menu.deleteRow");
             menu.AppendAction(
                 label,
                 _ => RequestRemoveRows(firstRow, count),
@@ -2159,10 +2183,10 @@ namespace NKStudio.TabularEditor.Window
             int firstColumn = Selection.MinColumn;
             int count = SelectedColumnCount;
 
-            menu.AppendAction("Insert Column Left", _ => InsertColumnsLeft());
-            menu.AppendAction("Insert Column Right", _ => InsertColumnsRight());
+            menu.AppendAction(Localization.Get("menu.insertColumnLeft"), _ => InsertColumnsLeft());
+            menu.AppendAction(Localization.Get("menu.insertColumnRight"), _ => InsertColumnsRight());
 
-            string label = count > 1 ? $"Delete {count} Columns" : "Delete Column";
+            string label = count > 1 ? Localization.Format("menu.deleteColumns", count) : Localization.Get("menu.deleteColumn");
             menu.AppendAction(
                 label,
                 _ => RequestRemoveColumns(firstColumn, count),
@@ -2171,15 +2195,15 @@ namespace NKStudio.TabularEditor.Window
 
         private void AppendClipboardActions(DropdownMenu menu)
         {
-            menu.AppendAction("Copy", _ => CopyRequested?.Invoke());
-            menu.AppendAction("Cut", _ => CutRequested?.Invoke());
+            menu.AppendAction(Localization.Get("menu.copy"), _ => CopyRequested?.Invoke());
+            menu.AppendAction(Localization.Get("menu.cut"), _ => CutRequested?.Invoke());
             menu.AppendAction(
-                "Paste",
+                Localization.Get("menu.paste"),
                 _ => PasteRequested?.Invoke(),
                 _ => TableClipboard.HasContent()
                     ? DropdownMenuAction.Status.Normal
                     : DropdownMenuAction.Status.Disabled);
-            menu.AppendAction("Clear Contents", _ => ClearRequested?.Invoke());
+            menu.AppendAction(Localization.Get("menu.clearContents"), _ => ClearRequested?.Invoke());
         }
 
         // 헤더 행은 문서 데이터가 아니라 보기 설정이라 Undo에 넣지 않는다. 저장(.meta)은 이벤트를 받은 창이 맡는다.
@@ -2189,11 +2213,11 @@ namespace NKStudio.TabularEditor.Window
 
             // 이미 선택한 행까지 헤더면 바뀌는 게 없으므로 고를 수 없게 한다.
             menu.AppendAction(
-                "Set Header Rows Up to Selection",
+                Localization.Get("menu.setHeaderRows"),
                 _ => HeaderRowsRequested?.Invoke(headerRowCount),
                 _ => HeaderRowCount != headerRowCount ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
             menu.AppendAction(
-                "Clear Header Rows",
+                Localization.Get("menu.clearHeaderRows"),
                 _ => HeaderRowsRequested?.Invoke(0),
                 _ => HeaderRowCount > 0 ? DropdownMenuAction.Status.Normal : DropdownMenuAction.Status.Disabled);
         }

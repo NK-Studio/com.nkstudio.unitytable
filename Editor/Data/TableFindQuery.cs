@@ -49,7 +49,7 @@ namespace NKStudio.TabularEditor.Data
             }
             catch (ArgumentException)
             {
-                ErrorMessage = "Invalid regex";
+                _hasInvalidRegex = true;
             }
         }
 
@@ -69,9 +69,12 @@ namespace NKStudio.TabularEditor.Data
         /// <summary>
         /// 조건을 해석할 수 없을 때(잘못된 정규식) 표시할 메시지입니다. 정상이면 null입니다.
         /// </summary>
-        public string ErrorMessage { get; }
+        // 문구는 읽을 때 현재 언어로 만든다. 언어를 바꿔도 검색 결과를 다시 만들 필요가 없다.
+        public string ErrorMessage => _hasInvalidRegex ? Localization.Get("search.invalidRegex") : null;
 
-        public bool IsValid => ErrorMessage == null;
+        private readonly bool _hasInvalidRegex;
+
+        public bool IsValid => _hasInvalidRegex == false;
 
         /// <summary>
         /// 문서의 빠른 부분 문자열 비교를 쓸 수 있는 단순 모드인지 여부입니다.

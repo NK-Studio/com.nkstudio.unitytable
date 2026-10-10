@@ -25,8 +25,8 @@ namespace NKStudio.TabularEditor.Window
                 label = "Tabular Editor",
                 keywords = new HashSet<string>
                 {
-                    "csv", "tsv", "table", "font", "zoom", "auto fit", "column", "encoding", "delimiter",
-                    "글꼴", "줌", "열 너비", "자동 맞춤", "인코딩", "구분 기호", "테마",
+                    "csv", "tsv", "table", "font", "zoom", "auto fit", "column", "encoding", "delimiter", "language",
+                    "글꼴", "줌", "열 너비", "자동 맞춤", "인코딩", "구분 기호", "테마", "언어",
                 },
                 guiHandler = _ => DrawGui(),
             };
@@ -45,85 +45,93 @@ namespace NKStudio.TabularEditor.Window
 
                 EditorGUILayout.Space(16);
 
-                if (GUILayout.Button("Reset to Defaults", GUILayout.Width(160)))
+                if (GUILayout.Button(Localization.Get("prefs.reset"), GUILayout.Width(160)))
                     TableEditorSettings.ResetToDefaults();
             }
         }
 
         private static void DrawDisplaySection()
         {
-            Section("Display");
+            Section(Localization.Get("prefs.display"));
+
+            Language[] languages = (Language[])Enum.GetValues(typeof(Language));
+            int languageIndex = EditorGUILayout.Popup(
+                Localization.Get("prefs.language"),
+                Array.IndexOf(languages, Localization.Current),
+                languages.Select(Localization.DisplayName).ToArray());
+            Localization.Current = languages[languageIndex];
+            Description(Localization.Get("prefs.languageDesc"));
 
             string[] themes = Enum.GetValues(typeof(TableEditorThemeStyle))
                 .Cast<TableEditorThemeStyle>()
                 .Select(TableEditorTheme.DisplayName)
                 .ToArray();
 
-            TableEditorTheme.Style = (TableEditorThemeStyle)EditorGUILayout.Popup("Theme", (int)TableEditorTheme.Style, themes);
-            Description("Also available from the ⋮ menu at the top right of the window. Dark/light follows the Unity Editor skin.");
+            TableEditorTheme.Style = (TableEditorThemeStyle)EditorGUILayout.Popup(Localization.Get("prefs.theme"), (int)TableEditorTheme.Style, themes);
+            Description(Localization.Get("prefs.themeDesc"));
 
             TableEditorSettings.FontSize = EditorGUILayout.IntSlider(
-                "Font Size",
+                Localization.Get("prefs.fontSize"),
                 TableEditorSettings.FontSize,
                 TableEditorSettings.MinFontSize,
                 TableEditorSettings.MaxFontSize);
-            Description("Font size of the table. Row height and row number width scale with it.");
+            Description(Localization.Get("prefs.fontSizeDesc"));
 
-            TableEditorSettings.MouseWheelZoom = EditorGUILayout.Toggle("Mouse Wheel Zoom", TableEditorSettings.MouseWheelZoom);
-            Description("Ctrl (Cmd on macOS) + mouse wheel increases or decreases the font size.");
+            TableEditorSettings.MouseWheelZoom = EditorGUILayout.Toggle(Localization.Get("prefs.wheelZoom"), TableEditorSettings.MouseWheelZoom);
+            Description(Localization.Get("prefs.wheelZoomDesc"));
         }
 
         private static void DrawAutoFitSection()
         {
-            Section("Column Auto-Fit");
+            Section(Localization.Get("prefs.autoFit"));
 
-            TableEditorSettings.AutoFitOnOpen = EditorGUILayout.Toggle("On File Open", TableEditorSettings.AutoFitOnOpen);
-            Description("Fits columns that have values to their content when a file opens. When off, all columns start at the default width.");
+            TableEditorSettings.AutoFitOnOpen = EditorGUILayout.Toggle(Localization.Get("prefs.onOpen"), TableEditorSettings.AutoFitOnOpen);
+            Description(Localization.Get("prefs.onOpenDesc"));
 
-            TableEditorSettings.AutoFitOnEdit = EditorGUILayout.Toggle("On Cell Edit", TableEditorSettings.AutoFitOnEdit);
-            Description("Widens a column when an edited value no longer fits. Never shrinks a column you widened yourself.");
+            TableEditorSettings.AutoFitOnEdit = EditorGUILayout.Toggle(Localization.Get("prefs.onEdit"), TableEditorSettings.AutoFitOnEdit);
+            Description(Localization.Get("prefs.onEditDesc"));
 
-            TableEditorSettings.AutoFitScanRows = EditorGUILayout.DelayedIntField("Rows to Scan", TableEditorSettings.AutoFitScanRows);
-            Description("Number of rows, from the top, examined to decide a width. Header rows are always examined.");
+            TableEditorSettings.AutoFitScanRows = EditorGUILayout.DelayedIntField(Localization.Get("prefs.scanRows"), TableEditorSettings.AutoFitScanRows);
+            Description(Localization.Get("prefs.scanRowsDesc"));
 
             TableEditorSettings.AutoFitMaxWidthPercent = EditorGUILayout.IntSlider(
-                "Max Width (% of Window)",
+                Localization.Get("prefs.maxWidth"),
                 TableEditorSettings.AutoFitMaxWidthPercent,
                 1,
                 100);
-            Description("Maximum width an auto-fitted column can grow to. Longer values are truncated with …. Also applies when double-clicking a column border.");
+            Description(Localization.Get("prefs.maxWidthDesc"));
         }
 
         private static void DrawNewTableSection()
         {
-            Section("New CSV File");
-            Description("Size and format of files created with Assets > Create > Scripting > CSV File.");
+            Section(Localization.Get("prefs.newTable"));
+            Description(Localization.Get("prefs.newTableDesc"));
 
-            TableEditorSettings.NewTableRows = EditorGUILayout.DelayedIntField("Rows", TableEditorSettings.NewTableRows);
-            TableEditorSettings.NewTableColumns = EditorGUILayout.DelayedIntField("Columns", TableEditorSettings.NewTableColumns);
+            TableEditorSettings.NewTableRows = EditorGUILayout.DelayedIntField(Localization.Get("prefs.rows"), TableEditorSettings.NewTableRows);
+            TableEditorSettings.NewTableColumns = EditorGUILayout.DelayedIntField(Localization.Get("prefs.columns"), TableEditorSettings.NewTableColumns);
 
             string[] encodings = TableEncodings.Entries.Select(entry => entry.Label).ToArray();
-            TableEditorSettings.NewTableEncodingIndex = EditorGUILayout.Popup("Encoding", TableEditorSettings.NewTableEncodingIndex, encodings);
+            TableEditorSettings.NewTableEncodingIndex = EditorGUILayout.Popup(Localization.Get("format.encoding"), TableEditorSettings.NewTableEncodingIndex, encodings);
 
-            TableEditorSettings.NewTableDelimiter = CharPopup("Delimiter", TableFormatChoices.Delimiters, TableEditorSettings.NewTableDelimiter);
-            TableEditorSettings.NewTableQuote = CharPopup("Quote", TableFormatChoices.Quotes, TableEditorSettings.NewTableQuote);
+            TableEditorSettings.NewTableDelimiter = CharPopup("format.delimiter", TableFormatChoices.Delimiters, TableEditorSettings.NewTableDelimiter);
+            TableEditorSettings.NewTableQuote = CharPopup("format.quote", TableFormatChoices.Quotes, TableEditorSettings.NewTableQuote);
 
             TableEditorSettings.NewTableQuoteMode = (TableQuoteMode)EditorGUILayout.Popup(
-                "Quote Mode",
+                Localization.Get("format.quoteMode"),
                 (int)TableEditorSettings.NewTableQuoteMode,
                 TableFormatChoices.QuoteModes);
 
             int newLine = EditorGUILayout.Popup(
-                "Line Ending",
+                Localization.Get("format.lineEnding"),
                 TableEditorSettings.NewTableUsesCrlf ? 1 : 0,
                 TableFormatChoices.NewLines.Select(choice => choice.Label).ToArray());
             TableEditorSettings.NewTableUsesCrlf = newLine == 1;
 
             TableEditorSettings.NewTableEndsWithNewLine = EditorGUILayout.Toggle(
-                "Final Newline",
+                Localization.Get("format.finalNewline"),
                 TableEditorSettings.NewTableEndsWithNewLine);
 
-            Description("Files created with a format other than the default (UTF-8, comma, double quote, minimal) record it in their .meta so they are read the same way when opened.");
+            Description(Localization.Get("prefs.newTableFormatDesc"));
         }
 
         // '기타'를 골랐지만 아직 글자를 입력하지 않은 항목이다. IMGUI는 프레임 사이에 상태가 없어,
@@ -131,11 +139,13 @@ namespace NKStudio.TabularEditor.Window
         private static readonly HashSet<string> OtherSelected = new();
 
         // 목록에 없는 문자는 '기타'로 보여 주고, 그 옆 칸에서 한 글자를 직접 입력한다.
-        private static char CharPopup(string label, (string Label, char Value)[] choices, char value)
+        // labelKey는 '기타'를 고른 상태를 기억하는 키도 겸한다. 문구로 기억하면 언어를 바꿀 때 상태를 잃는다.
+        private static char CharPopup(string labelKey, (string Label, char Value)[] choices, char value)
         {
+            string label = Localization.Get(labelKey);
             string[] labels = choices.Select(choice => choice.Label).Append(TableFormatChoices.OtherLabel).ToArray();
             int listedIndex = TableFormatChoices.IndexOf(choices, value);
-            int index = OtherSelected.Contains(label) ? choices.Length : listedIndex;
+            int index = OtherSelected.Contains(labelKey) ? choices.Length : listedIndex;
 
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -143,11 +153,11 @@ namespace NKStudio.TabularEditor.Window
 
                 if (selected < choices.Length)
                 {
-                    OtherSelected.Remove(label);
+                    OtherSelected.Remove(labelKey);
                     return choices[selected].Value;
                 }
 
-                OtherSelected.Add(label);
+                OtherSelected.Add(labelKey);
 
                 string current = listedIndex == choices.Length ? value.ToString() : string.Empty;
                 string typed = EditorGUILayout.DelayedTextField(current, GUILayout.Width(40));

@@ -32,7 +32,7 @@ namespace NKStudio.TabularEditor.Commands
         /// <summary>
         /// 작업 이름입니다.
         /// </summary>
-        public string Name => "Move Columns";
+        public string Name => Localization.Get("undo.moveColumns");
 
         /// <summary>
         /// 열을 옮깁니다.

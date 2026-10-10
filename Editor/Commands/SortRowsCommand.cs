@@ -29,7 +29,7 @@ namespace NKStudio.TabularEditor.Commands
         /// <summary>
         /// 작업 이름입니다.
         /// </summary>
-        public string Name => _descending ? "Sort Descending" : "Sort Ascending";
+        public string Name => Localization.Get(_descending ? "menu.sortDescending" : "menu.sortAscending");
 
         /// <summary>
         /// 행을 정렬합니다. 처음 실행할 때 계산한 순서를 Redo에서도 그대로 쓴다.

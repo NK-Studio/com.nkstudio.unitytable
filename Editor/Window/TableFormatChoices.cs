@@ -7,27 +7,33 @@ namespace NKStudio.TabularEditor.Window
     /// </summary>
     internal static class TableFormatChoices
     {
-        public const string OtherLabel = "Other...";
+        // 문구는 언어에 따라 바뀌므로 읽을 때마다 만든다. 값(문자)과 순서는 고정이다.
+        public static string OtherLabel => Localization.Get("choice.otherCharacter");
 
-        public static readonly (string Label, char Value)[] Delimiters =
+        public static (string Label, char Value)[] Delimiters => new[]
         {
-            ("Comma ( , )", ','),
-            ("Tab", '\t'),
-            ("Semicolon ( ; )", ';'),
-            ("Colon ( : )", ':'),
-            ("Pipe ( | )", '|'),
-            ("Space", ' '),
+            (Localization.Get("choice.comma"), ','),
+            (Localization.Get("choice.tab"), '\t'),
+            (Localization.Get("choice.semicolon"), ';'),
+            (Localization.Get("choice.colon"), ':'),
+            (Localization.Get("choice.pipe"), '|'),
+            (Localization.Get("choice.space"), ' '),
         };
 
-        public static readonly (string Label, char Value)[] Quotes =
+        public static (string Label, char Value)[] Quotes => new[]
         {
-            ("None", TableFileOptions.NoQuote),
+            (Localization.Get("choice.none"), TableFileOptions.NoQuote),
             ("\"", '"'),
             ("'", '\''),
         };
 
         // TableQuoteMode 순서(Always, Minimal, Never)와 같다.
-        public static readonly string[] QuoteModes = { "Always", "Minimal", "Never" };
+        public static string[] QuoteModes => new[]
+        {
+            Localization.Get("choice.always"),
+            Localization.Get("choice.minimal"),
+            Localization.Get("choice.never"),
+        };
 
         public static readonly (string Label, string Value)[] NewLines =
         {

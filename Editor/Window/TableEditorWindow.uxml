@@ -8,7 +8,7 @@
             <uie:ToolbarButton
                 name="table-editor__search-button"
                 class="table-editor__toolbar-icon-button"
-                tooltip="Search cell contents (Ctrl+F)">
+                tooltip="@search.buttonTip">
                 <ui:VisualElement class="table-editor__icon table-editor__icon--search" />
             </uie:ToolbarButton>
         </uie:Toolbar>
@@ -20,7 +20,7 @@
             <ui:Button
                 name="table-editor__search-expand-button"
                 class="table-editor__icon-button table-editor__search-expand-button"
-                tooltip="Toggle replace">
+                tooltip="@search.expandTip">
                 <ui:VisualElement class="table-editor__icon table-editor__icon--chevron" />
             </ui:Button>
 
@@ -32,19 +32,19 @@
                             <ui:Button
                                 name="table-editor__search-case-toggle"
                                 class="table-editor__icon-button table-editor__option-toggle"
-                                tooltip="Match case">
+                                tooltip="@search.caseTip">
                                 <ui:VisualElement class="table-editor__icon table-editor__icon--match-case" />
                             </ui:Button>
                             <ui:Button
                                 name="table-editor__search-regex-toggle"
                                 class="table-editor__icon-button table-editor__option-toggle"
-                                tooltip="Use regular expression">
+                                tooltip="@search.regexTip">
                                 <ui:VisualElement class="table-editor__icon table-editor__icon--regex" />
                             </ui:Button>
                             <ui:Button
                                 name="table-editor__search-word-toggle"
                                 class="table-editor__icon-button table-editor__option-toggle"
-                                tooltip="Match whole word">
+                                tooltip="@search.wordTip">
                                 <ui:VisualElement class="table-editor__icon table-editor__icon--match-word" />
                             </ui:Button>
                         </ui:VisualElement>
@@ -53,25 +53,25 @@
                     <ui:Button
                         name="table-editor__search-next-button"
                         class="table-editor__icon-button"
-                        tooltip="Next match (Enter, F3)">
+                        tooltip="@search.nextTip">
                         <ui:VisualElement class="table-editor__icon table-editor__icon--next" />
                     </ui:Button>
                     <ui:Button
                         name="table-editor__search-previous-button"
                         class="table-editor__icon-button"
-                        tooltip="Previous match (Shift+Enter, Shift+F3)">
+                        tooltip="@search.previousTip">
                         <ui:VisualElement class="table-editor__icon table-editor__icon--previous" />
                     </ui:Button>
                     <ui:Button
                         name="table-editor__search-selection-toggle"
                         class="table-editor__icon-button table-editor__option-toggle"
-                        tooltip="Find in selection">
+                        tooltip="@search.selectionTip">
                         <ui:VisualElement class="table-editor__icon table-editor__icon--selection" />
                     </ui:Button>
                     <ui:Button
                         name="table-editor__search-vertical-toggle"
                         class="table-editor__icon-button table-editor__option-toggle"
-                        tooltip="Search vertically (column by column, top to bottom)">
+                        tooltip="@search.verticalTip">
                         <ui:VisualElement class="table-editor__icon table-editor__icon--vertical" />
                     </ui:Button>
 
@@ -81,7 +81,7 @@
                     <ui:Button
                         name="table-editor__search-close-button"
                         class="table-editor__icon-button"
-                        tooltip="Close (Esc)">
+                        tooltip="@common.closeEsc">
                         <ui:VisualElement class="table-editor__icon table-editor__icon--close" />
                     </ui:Button>
                 </ui:VisualElement>
@@ -96,20 +96,20 @@
                                 name="table-editor__replace-preserve-case-toggle"
                                 class="table-editor__icon-button table-editor__option-toggle table-editor__text-toggle"
                                 text="AB"
-                                tooltip="Preserve case" />
+                                tooltip="@search.preserveCaseTip" />
                         </ui:VisualElement>
                     </ui:VisualElement>
 
                     <ui:Button
                         name="table-editor__replace-button"
                         class="table-editor__icon-button"
-                        tooltip="Replace (Enter)">
+                        tooltip="@search.replaceTip">
                         <ui:VisualElement class="table-editor__icon table-editor__icon--replace" />
                     </ui:Button>
                     <ui:Button
                         name="table-editor__replace-all-button"
                         class="table-editor__icon-button"
-                        tooltip="Replace all (Ctrl/Cmd+Enter)">
+                        tooltip="@search.replaceAllTip">
                         <ui:VisualElement class="table-editor__icon table-editor__icon--replace-all" />
                     </ui:Button>
                 </ui:VisualElement>
@@ -123,18 +123,18 @@
             <ui:VisualElement class="table-editor__icon table-editor__icon--info" />
             <ui:Label
                 class="table-editor__external-change-text"
-                text="The file was changed outside the editor. You have unsaved edits." />
+                text="@external.message" />
             <ui:VisualElement class="table-editor__toolbar-spacer" />
             <ui:Button
                 name="table-editor__external-change-reload-button"
                 class="table-editor__bar-button"
-                text="Reload"
-                tooltip="Discard unsaved edits and read the changed file." />
+                text="@external.reload"
+                tooltip="@external.reloadTip" />
             <ui:Button
                 name="table-editor__external-change-dismiss-button"
                 class="table-editor__bar-button"
-                text="Ignore"
-                tooltip="Keep your edits. You will be asked whether to overwrite when you save." />
+                text="@external.ignore"
+                tooltip="@external.ignoreTip" />
         </ui:VisualElement>
 
         <ui:VisualElement class="table-editor__body">
@@ -145,14 +145,14 @@
                 name="table-editor__add-column-button"
                 class="table-editor__add-button table-editor__add-column-button"
                 text="+"
-                tooltip="Add a column at the far right." />
+                tooltip="@window.addColumnTip" />
         </ui:VisualElement>
 
         <ui:Button
             name="table-editor__add-row-button"
             class="table-editor__add-button table-editor__add-row-button"
             text="+"
-            tooltip="Add a row at the bottom." />
+            tooltip="@window.addRowTip" />
 
         <!-- 상태 표시줄: 왼쪽은 표 크기·활성 셀, 오른쪽은 파일 형식(인코딩·개행·구분 기호). -->
         <ui:VisualElement name="table-editor__status-bar" class="table-editor__status-bar">
@@ -172,17 +172,17 @@
             <ui:Label
                 name="table-editor__status-encoding"
                 class="table-editor__status-label"
-                tooltip="File encoding. Kept as is when saving."
+                tooltip="@status.encodingTip"
                 text="" />
             <ui:Label
                 name="table-editor__status-newline"
                 class="table-editor__status-label"
-                tooltip="Line ending. Kept as is when saving."
+                tooltip="@status.newlineTip"
                 text="" />
             <ui:Label
                 name="table-editor__status-delimiter"
                 class="table-editor__status-label"
-                tooltip="Delimiter and quoting rule. Quotes are added only to cells that contain the delimiter, a quote or a line break."
+                tooltip="@status.delimiterTip"
                 text="" />
         </ui:VisualElement>
     </ui:VisualElement>

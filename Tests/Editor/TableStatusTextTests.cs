@@ -9,6 +9,21 @@ namespace NKStudio.TabularEditor.Tests
     /// </summary>
     public sealed class TableStatusTextTests
     {
+        private System.IDisposable _language;
+
+        // 기대값은 영어 문구다. 사용자가 고른 언어(EditorPrefs)와 상관없이 영어로 고정한다.
+        [SetUp]
+        public void SetUp()
+        {
+            _language = Localization.Override(Language.English);
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            _language.Dispose();
+        }
+
         [Test]
         public void Test_DescribeEncoding_DistinguishesBom()
         {
@@ -50,6 +65,15 @@ namespace NKStudio.TabularEditor.Tests
             };
 
             Assert.AreEqual("Delimiter=[;], Quote=[None](Always)", TableFormatUtility.DescribeDelimiter(options));
+        }
+
+        [Test]
+        public void Test_DescribeDelimiter_Korean()
+        {
+            using (Localization.Override(Language.Korean))
+            {
+                Assert.AreEqual("구분 기호=[,], 따옴표=[\"](최소)", TableFormatUtility.DescribeDelimiter(new TableFileOptions()));
+            }
         }
     }
 }

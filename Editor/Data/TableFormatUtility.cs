@@ -58,8 +58,8 @@ namespace NKStudio.TabularEditor.Data
         {
             options ??= new TableFileOptions();
 
-            string quote = options.Quote == TableFileOptions.NoQuote ? "None" : options.Quote.ToString();
-            return $"Delimiter=[{DescribeDelimiterChar(options.Delimiter)}], Quote=[{quote}]({DescribeQuoteMode(options.QuoteMode)})";
+            string quote = options.Quote == TableFileOptions.NoQuote ? Localization.Get("choice.none") : options.Quote.ToString();
+            return Localization.Format("status.delimiter", DescribeDelimiterChar(options.Delimiter), quote, DescribeQuoteMode(options.QuoteMode));
         }
 
         /// <summary>
@@ -70,7 +70,7 @@ namespace NKStudio.TabularEditor.Data
             return delimiter switch
             {
                 '\t' => "Tab",
-                ' ' => "Space",
+                ' ' => Localization.Get("choice.space"),
                 _ => delimiter.ToString(),
             };
         }
@@ -82,9 +82,9 @@ namespace NKStudio.TabularEditor.Data
         {
             return quoteMode switch
             {
-                TableQuoteMode.Always => "Always",
-                TableQuoteMode.Never => "Never",
-                _ => "Minimal",
+                TableQuoteMode.Always => Localization.Get("choice.always"),
+                TableQuoteMode.Never => Localization.Get("choice.never"),
+                _ => Localization.Get("choice.minimal"),
             };
         }
 

@@ -38,6 +38,7 @@ https://github.com/NK-Studio/com.nkstudio.unitytable.git
 | Ctrl+Home / Ctrl+End | 표의 처음/끝 |
 | Ctrl+방향키 | 값이 이어진 구간의 끝 → 다음 값 → 표 끝 순으로 이동 (Excel 방식). Shift를 더하면 선택 확장 |
 | PageUp / PageDown | 화면 단위 이동 |
+| Shift+휠 / 트랙패드 좌우 | 가로 스크롤 |
 | F2 또는 문자 입력 | 셀 편집 시작 |
 | 더블클릭 | 셀 편집 시작 |
 | 방향키 (타이핑 중) | 입력을 확정하고 그 방향으로 이동 |

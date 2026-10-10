@@ -15,14 +15,20 @@ namespace NKStudio.TabularEditor.Data
         /// </summary>
         public sealed class Entry
         {
-            internal Entry(string label, int codePage, bool hasBom)
+            internal Entry(string label, int codePage, bool hasBom, string labelKey = null)
             {
-                Label = label;
+                _label = label;
+                _labelKey = labelKey;
                 CodePage = codePage;
                 HasBom = hasBom;
             }
 
-            public string Label { get; }
+            private readonly string _label;
+
+            // 나라 이름이 붙은 인코딩만 번역한다. UTF-8·Windows 1252 같은 이름은 어느 언어에서나 그대로 쓴다.
+            private readonly string _labelKey;
+
+            public string Label => _labelKey == null ? _label : Localization.Get(_labelKey);
 
             public int CodePage { get; }
 
@@ -54,8 +60,8 @@ namespace NKStudio.TabularEditor.Data
             new("UTF-8 with BOM", Utf8CodePage, true),
             new("UTF-16 LE", Utf16LeCodePage, true),
             new("UTF-16 BE", Utf16BeCodePage, true),
-            new("Korean (CP949)", 949, false),
-            new("Korean (EUC-KR)", 51949, false),
+            new("Korean (CP949)", 949, false, "encoding.cp949"),
+            new("Korean (EUC-KR)", 51949, false, "encoding.eucKr"),
             new("Windows 1252", 1252, false),
             new("ISO 8859-1", 28591, false),
             new("ISO 8859-15", 28605, false),
@@ -63,11 +69,11 @@ namespace NKStudio.TabularEditor.Data
             new("Windows 1251", 1251, false),
             new("KOI8-R", 20866, false),
             new("Windows 1250", 1250, false),
-            new("Japanese (Shift_JIS)", 932, false),
-            new("Japanese (EUC-JP)", 51932, false),
-            new("Chinese Simplified (GBK)", 936, false),
-            new("Chinese Simplified (GB18030)", 54936, false),
-            new("Chinese Traditional (Big5)", 950, false),
+            new("Japanese (Shift_JIS)", 932, false, "encoding.shiftJis"),
+            new("Japanese (EUC-JP)", 51932, false, "encoding.eucJp"),
+            new("Chinese Simplified (GBK)", 936, false, "encoding.gbk"),
+            new("Chinese Simplified (GB18030)", 54936, false, "encoding.gb18030"),
+            new("Chinese Traditional (Big5)", 950, false, "encoding.big5"),
         };
 
         public static IReadOnlyList<Entry> Entries => AllEntries;

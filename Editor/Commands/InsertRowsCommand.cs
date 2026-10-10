@@ -28,7 +28,7 @@ namespace NKStudio.TabularEditor.Commands
         /// <summary>
         /// 작업 이름입니다.
         /// </summary>
-        public string Name => "Insert Rows";
+        public string Name => Localization.Get("undo.insertRows");
 
         /// <summary>
         /// 행을 삽입합니다.

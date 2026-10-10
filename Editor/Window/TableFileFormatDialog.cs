@@ -17,12 +17,12 @@ namespace NKStudio.TabularEditor.Window
     {
         private const string OverlayClassName = "table-editor__dialog-overlay";
         private const string HiddenClassName = "table-editor__dialog-overlay--hidden";
-        private const string OtherChoice = TableFormatChoices.OtherLabel;
 
-        private static readonly (string Label, char Value)[] DelimiterChoices = TableFormatChoices.Delimiters;
-        private static readonly (string Label, char Value)[] QuoteChoices = TableFormatChoices.Quotes;
-        private static readonly string[] QuoteModeChoices = TableFormatChoices.QuoteModes;
-        private static readonly (string Label, string Value)[] NewLineChoices = TableFormatChoices.NewLines;
+        // 선택지 문구는 언어에 따라 바뀌므로 대화상자를 열 때마다 다시 채운다(Open). 값과 순서는 고정이다.
+        private static (string Label, char Value)[] DelimiterChoices => TableFormatChoices.Delimiters;
+        private static (string Label, char Value)[] QuoteChoices => TableFormatChoices.Quotes;
+        private static string[] QuoteModeChoices => TableFormatChoices.QuoteModes;
+        private static (string Label, string Value)[] NewLineChoices => TableFormatChoices.NewLines;
 
         private readonly VisualElement _overlay;
         private readonly VisualElement _card;
@@ -66,7 +66,7 @@ namespace NKStudio.TabularEditor.Window
 
             _closeButton = new Button(Close);
             _closeButton.AddToClassList("table-editor__icon-button");
-            _closeButton.tooltip = "Close (Esc)";
+            Localization.BindTooltip(_closeButton, "common.closeEsc");
             VisualElement closeIcon = new();
             closeIcon.AddToClassList("table-editor__icon");
             closeIcon.AddToClassList("table-editor__icon--close");
@@ -74,35 +74,30 @@ namespace NKStudio.TabularEditor.Window
             header.Add(_closeButton);
             _card.Add(header);
 
-            _encodingField = AddDropdown("Encoding");
+            _encodingField = AddDropdown("format.encoding");
 
-            _delimiterField = AddDropdown("Delimiter");
-            _delimiterField.choices = BuildChoices(DelimiterChoices);
-            _delimiterOtherField = AddOtherField(_delimiterField, "Single delimiter character");
+            _delimiterField = AddDropdown("format.delimiter");
+            _delimiterOtherField = AddOtherField(_delimiterField, "dialog.otherDelimiter");
 
-            _quoteField = AddDropdown("Quote");
-            _quoteField.choices = BuildChoices(QuoteChoices);
-            _quoteOtherField = AddOtherField(_quoteField, "Single quote character");
+            _quoteField = AddDropdown("format.quote");
+            _quoteOtherField = AddOtherField(_quoteField, "dialog.otherQuote");
 
-            _quoteModeField = AddDropdown("Quote Mode");
-            _quoteModeField.choices = new List<string>(QuoteModeChoices);
+            _quoteModeField = AddDropdown("format.quoteMode");
 
-            _newLineField = AddDropdown("Line Ending");
+            _newLineField = AddDropdown("format.lineEnding");
             _newLineField.choices = new List<string> { NewLineChoices[0].Label, NewLineChoices[1].Label };
 
-            _endsWithNewLineToggle = new Toggle("Final Newline");
+            _endsWithNewLineToggle = new Toggle();
+            Localization.Bind(_endsWithNewLineToggle, () => _endsWithNewLineToggle.label = Localization.Get("format.finalNewline"));
             _endsWithNewLineToggle.AddToClassList("table-editor__dialog-toggle");
             _card.Add(_endsWithNewLineToggle);
 
             VisualElement footer = new();
             footer.AddToClassList("table-editor__dialog-footer");
 
-            _cancelButton = CreateFooterButton("Cancel", "table-editor__dialog-button--secondary", Close,
-                "Close without changes.");
-            _reopenButton = CreateFooterButton("Reopen", "table-editor__dialog-button--primary", OnReopenClicked,
-                "Re-read the file in this format. Unsaved edits are discarded.");
-            _applyButton = CreateFooterButton("Apply", "table-editor__dialog-button--primary", OnApplyClicked,
-                "Change only the save format and keep cell values. Takes effect in the file when you save.");
+            _cancelButton = CreateFooterButton("common.cancel", "table-editor__dialog-button--secondary", Close, "dialog.cancelTip");
+            _reopenButton = CreateFooterButton("dialog.reopen", "table-editor__dialog-button--primary", OnReopenClicked, "dialog.reopenTip");
+            _applyButton = CreateFooterButton("dialog.apply", "table-editor__dialog-button--primary", OnApplyClicked, "dialog.applyTip");
 
             footer.Add(_cancelButton);
             footer.Add(_reopenButton);
@@ -136,7 +131,11 @@ namespace NKStudio.TabularEditor.Window
         {
             current ??= new TableFileOptions();
 
-            _title.text = format == TableFormat.Tsv ? "TSV File Format" : "CSV File Format";
+            _title.text = Localization.Get(format == TableFormat.Tsv ? "dialog.titleTsv" : "dialog.titleCsv");
+
+            _delimiterField.choices = BuildChoices(DelimiterChoices);
+            _quoteField.choices = BuildChoices(QuoteChoices);
+            _quoteModeField.choices = new List<string>(QuoteModeChoices);
 
             FillEncodingChoices(current.Encoding);
             SelectChar(_delimiterField, _delimiterOtherField, DelimiterChoices, current.Delimiter);
@@ -166,9 +165,10 @@ namespace NKStudio.TabularEditor.Window
             _overlay.RemoveFromHierarchy();
         }
 
-        private DropdownField AddDropdown(string label)
+        private DropdownField AddDropdown(string labelKey)
         {
-            Label caption = new(label);
+            Label caption = new();
+            Localization.BindText(caption, labelKey);
             caption.AddToClassList("table-editor__dialog-label");
             _card.Add(caption);
 
@@ -180,23 +180,29 @@ namespace NKStudio.TabularEditor.Window
         }
 
         // 'Other...'를 고르면 그 아래에 한 글자 입력칸을 보여 준다.
-        private TextField AddOtherField(DropdownField owner, string placeholder)
+        private TextField AddOtherField(DropdownField owner, string placeholderKey)
         {
             TextField field = new() { maxLength = 1 };
             field.AddToClassList("table-editor__dialog-other-field");
-            field.textEdition.placeholder = placeholder;
+            Localization.BindPlaceholder(field, placeholderKey);
             field.style.display = DisplayStyle.None;
             _card.Add(field);
 
-            owner.RegisterValueChangedCallback(evt =>
-                field.style.display = evt.newValue == OtherChoice ? DisplayStyle.Flex : DisplayStyle.None);
+            // '기타'는 늘 마지막 선택지다. 문구가 언어마다 달라 글자로 비교하지 않고 위치로 본다.
+            owner.RegisterValueChangedCallback(_ =>
+                field.style.display = owner.index == owner.choices.Count - 1 ? DisplayStyle.Flex : DisplayStyle.None);
 
             return field;
         }
 
-        private Button CreateFooterButton(string text, string variantClass, Action clicked, string tooltip)
+        private Button CreateFooterButton(string textKey, string variantClass, Action clicked, string tooltipKey)
         {
-            Button button = new(clicked) { text = text, tooltip = tooltip };
+            Button button = new(clicked);
+            Localization.Bind(button, () =>
+            {
+                button.text = Localization.Get(textKey);
+                button.tooltip = Localization.Get(tooltipKey);
+            });
             button.AddToClassList("table-editor__dialog-button");
             button.AddToClassList(variantClass);
             return button;
@@ -209,7 +215,7 @@ namespace NKStudio.TabularEditor.Window
             foreach ((string label, char _) in choices)
                 labels.Add(label);
 
-            labels.Add(OtherChoice);
+            labels.Add(TableFormatChoices.OtherLabel);
             return labels;
         }
 
@@ -222,7 +228,7 @@ namespace NKStudio.TabularEditor.Window
 
             if (selected < 0)
             {
-                labels.Add($"{current.EncodingName} (current)");
+                labels.Add(Localization.Format("dialog.currentEncoding", current.EncodingName));
                 _encodingFactories.Add(() => current);
             }
 

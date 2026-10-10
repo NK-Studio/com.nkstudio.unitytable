@@ -114,6 +114,9 @@ namespace NKStudio.TabularEditor.Window
 
             treeAsset.CloneTree(rootVisualElement);
 
+            // UXML의 "@키" 문구를 현재 언어로 채운다. 언어가 바뀌면 ApplyLanguage가 다시 그린다.
+            Localization.Localize(rootVisualElement);
+
             VisualElement gridContainer = rootVisualElement.Q<VisualElement>("table-editor__grid-container");
 
             if (gridContainer == null)
@@ -169,6 +172,19 @@ namespace NKStudio.TabularEditor.Window
         {
             TableEditorTheme.Changed += ApplyTheme;
             TableEditorSettings.Changed += OnSettingsChanged;
+            Localization.Changed += ApplyLanguage;
+        }
+
+        // 묶어 둔 문구(UXML·대화상자·열 메뉴·검색 바)를 다시 그리고, 그때그때 만드는 문구(탭 제목·상태 표시줄·검색 개수)를 새로 쓴다.
+        // 우클릭·⋮ 메뉴는 열 때마다 만들므로 따로 할 일이 없다.
+        private void ApplyLanguage()
+        {
+            Localization.Refresh(rootVisualElement);
+            _formatDialog?.Close();
+            _searchController?.RefreshLanguage();
+            UpdateTitle();
+            UpdateDirtyState();
+            UpdateStatusBar();
         }
 
         // 글꼴 크기는 Preferences와 Ctrl/Cmd+휠 줌이 함께 바꾼다. 다른 설정(자동 맞춤·새 CSV)은 쓸 때마다 읽으므로 따로 할 일이 없다.
@@ -181,6 +197,7 @@ namespace NKStudio.TabularEditor.Window
         {
             TableEditorTheme.Changed -= ApplyTheme;
             TableEditorSettings.Changed -= OnSettingsChanged;
+            Localization.Changed -= ApplyLanguage;
 
             _fileWatcher?.Dispose();
             _fileWatcher = null;
@@ -242,21 +259,34 @@ namespace NKStudio.TabularEditor.Window
         }
 
         /// <summary>
-        /// 창 오른쪽 위 ⋮ 메뉴에 테마 선택과 환경 설정(Preferences > Tabular Editor) 열기 항목을 추가합니다.
+        /// 창 오른쪽 위 ⋮ 메뉴에 테마·언어 선택과 환경 설정(Preferences > Tabular Editor) 열기 항목을 추가합니다.
         /// </summary>
         public void AddItemsToMenu(GenericMenu menu)
         {
+            string theme = Localization.Get("menu.theme");
+
             foreach (TableEditorThemeStyle style in Enum.GetValues(typeof(TableEditorThemeStyle)))
             {
                 menu.AddItem(
-                    new GUIContent($"Theme/{TableEditorTheme.DisplayName(style)}"),
+                    new GUIContent($"{theme}/{TableEditorTheme.DisplayName(style)}"),
                     TableEditorTheme.Style == style,
                     () => TableEditorTheme.Style = style);
             }
 
+            // 언어 이름은 그 언어로 적어, 지금 언어를 읽지 못해도 자기 언어를 찾을 수 있게 한다.
+            string language = Localization.Get("menu.language");
+
+            foreach (Language option in Enum.GetValues(typeof(Language)))
+            {
+                menu.AddItem(
+                    new GUIContent($"{language}/{Localization.DisplayName(option)}"),
+                    Localization.Current == option,
+                    () => Localization.Current = option);
+            }
+
             // 글꼴 크기·자동 맞춤·새 CSV 형식 등 나머지 설정은 Preferences 페이지에 있다.
             menu.AddItem(
-                new GUIContent("Preferences..."),
+                new GUIContent(Localization.Get("menu.preferences")),
                 false,
                 () => SettingsService.OpenUserPreferences(TableEditorPreferences.Path));
         }
@@ -349,7 +379,7 @@ namespace NKStudio.TabularEditor.Window
 
                 Debug.LogException(exception);
                 EndLoading();
-                ShowLoadingMessage($"Failed to load the file.\n{path}");
+                ShowLoadingMessage(Localization.Format("window.loadFailed", path));
                 return;
             }
 
@@ -445,7 +475,7 @@ namespace NKStudio.TabularEditor.Window
 
             _loadingOverlayReveal?.Pause();
             _loadingOverlayReveal = _loadingOverlay.schedule
-                .Execute(() => ShowLoadingMessage("Loading…"))
+                .Execute(() => ShowLoadingMessage(Localization.Get("window.loading")))
                 .StartingIn(LoadingOverlayDelayMs);
         }
 
@@ -471,7 +501,7 @@ namespace NKStudio.TabularEditor.Window
             rootVisualElement.Clear();
 
             Label label = new();
-            label.text = $"Failed to load UXML.\n{UxmlPath}";
+            label.text = Localization.Format("window.uxmlFailed", UxmlPath);
             label.AddToClassList("table-editor__empty-message");
             rootVisualElement.Add(label);
         }
@@ -571,9 +601,9 @@ namespace NKStudio.TabularEditor.Window
             if (string.IsNullOrEmpty(assetPath))
             {
                 EditorUtility.DisplayDialog(
-                    "Save Table",
-                    "There is no file path to save to. Open a CSV or TSV file from the Project window.",
-                    "OK");
+                    Localization.Get("window.saveTitle"),
+                    Localization.Get("window.noPath"),
+                    Localization.Get("common.ok"));
 
                 return;
             }
@@ -611,7 +641,7 @@ namespace NKStudio.TabularEditor.Window
             foreach (Label label in FormatLabels())
             {
                 label.AddToClassList(StatusLabelClickableClassName);
-                label.tooltip = "Click to change the file format (encoding, delimiter, quote, line ending).";
+                Localization.BindTooltip(label, "status.changeFormatTip");
                 label.RegisterCallback<ClickEvent>(OnFormatLabelClicked);
             }
         }
@@ -664,10 +694,10 @@ namespace NKStudio.TabularEditor.Window
             if (_commandStack.IsDirty)
             {
                 bool reopen = EditorUtility.DisplayDialog(
-                    "Reopen",
-                    "Discard unsaved edits and re-read the file in this format.",
-                    "Reopen",
-                    "Cancel");
+                    Localization.Get("dialog.reopen"),
+                    Localization.Get("window.reopenBody"),
+                    Localization.Get("dialog.reopen"),
+                    Localization.Get("common.cancel"));
 
                 if (reopen == false)
                     return;
@@ -794,10 +824,10 @@ namespace NKStudio.TabularEditor.Window
                 return true;
 
             return EditorUtility.DisplayDialog(
-                "Save Table",
-                "The file was changed outside the editor. Overwrite it with your current edits?",
-                "Overwrite",
-                "Cancel");
+                Localization.Get("window.saveTitle"),
+                Localization.Get("window.overwriteBody"),
+                Localization.Get("window.overwrite"),
+                Localization.Get("common.cancel"));
         }
 
         private void CopySelection()
@@ -827,7 +857,7 @@ namespace NKStudio.TabularEditor.Window
             CellSelection selection = _gridView.Selection;
 
             ExecuteCommand(new SetCellsCommand(
-                "Paste",
+                Localization.Get("undo.paste"),
                 selection.MinRow,
                 selection.MinColumn,
                 values));
@@ -841,7 +871,7 @@ namespace NKStudio.TabularEditor.Window
             CellSelection selection = _gridView.Selection;
 
             ExecuteCommand(new SetCellsCommand(
-                "Clear Range",
+                Localization.Get("undo.clearRange"),
                 selection.MinRow,
                 selection.MinColumn,
                 TableClipboard.CreateEmptyValues(selection)));
@@ -870,13 +900,13 @@ namespace NKStudio.TabularEditor.Window
         private void UpdateDirtyState()
         {
             hasUnsavedChanges = _commandStack.IsDirty && !string.IsNullOrEmpty(assetPath);
-            saveChangesMessage = "There are unsaved changes. Do you want to save them?";
+            saveChangesMessage = Localization.Get("window.unsavedChanges");
         }
 
         private void UpdateTitle()
         {
             string fileName = string.IsNullOrEmpty(assetPath)
-                ? "New Table"
+                ? Localization.Get("window.newTable")
                 : Path.GetFileName(assetPath);
 
             // 저장 안 한 표시(*)는 붙이지 않는다. hasUnsavedChanges가 켜지면 Unity 탭이 스스로 '*'를 붙이므로,
@@ -892,13 +922,16 @@ namespace NKStudio.TabularEditor.Window
             CellSelection selection = _gridView.Selection;
 
             if (_sizeLabel != null)
-                _sizeLabel.text = $"{Count(_document.RowCount, "row")} × {Count(_document.ColumnCount, "column")}";
+                _sizeLabel.text = Localization.Format(
+                    "status.size",
+                    Localization.Count("count.row", _document.RowCount),
+                    Localization.Count("count.column", _document.ColumnCount));
 
             if (_positionLabel != null)
                 _positionLabel.text = $"{selection.Anchor.Row + 1}:{selection.Anchor.Column + 1} ({DescribeSelection(selection)})";
 
             if (_stateLabel != null)
-                _stateLabel.text = _commandStack.IsDirty ? "Unsaved" : string.Empty;
+                _stateLabel.text = _commandStack.IsDirty ? Localization.Get("status.unsaved") : string.Empty;
 
             if (_encodingLabel != null)
                 _encodingLabel.text = TableFormatUtility.DescribeEncoding(_document.FileOptions?.Encoding);
@@ -918,23 +951,17 @@ namespace NKStudio.TabularEditor.Window
             int columns = selection.MaxColumn - selection.MinColumn + 1;
 
             if (selection.Kind == CellSelectionKind.Rows)
-                return $"{Count(rows, "row")} · Delete to remove";
+                return Localization.Format("status.deleteHint", Localization.Count("count.selectedRow", rows));
 
             if (selection.Kind == CellSelectionKind.Columns)
-                return $"{Count(columns, "column")} · Delete to remove";
+                return Localization.Format("status.deleteHint", Localization.Count("count.selectedColumn", columns));
 
             if (selection.IsSingleCell == false)
-                return Count(rows * columns, "cell");
+                return Localization.Count("count.cell", rows * columns);
 
             // 한글·이모지 결합 문자를 한 글자로 센다.
             string value = _document.GetCell(selection.Anchor.Row, selection.Anchor.Column);
-            return Count(new StringInfo(value).LengthInTextElements, "char");
-        }
-
-        // 예: (1, "row") → "1 row", (3, "row") → "3 rows"
-        private static string Count(int count, string noun)
-        {
-            return count == 1 ? $"1 {noun}" : $"{count} {noun}s";
+            return Localization.Count("count.char", new StringInfo(value).LengthInTextElements);
         }
     }
 }

@@ -16,7 +16,7 @@ namespace NKStudio.TabularEditor.Commands
             _newOptions = newOptions.Clone();
         }
 
-        public string Name => "Change File Format";
+        public string Name => Localization.Get("undo.changeFormat");
 
         public void Execute(TableDocument document)
         {

@@ -87,8 +87,8 @@ namespace NKStudio.TabularEditor.Window
             _verticalToggle = new OptionToggle(root.Q<Button>("table-editor__search-vertical-toggle"), RebuildMatches);
             _preserveCaseToggle = new OptionToggle(root.Q<Button>("table-editor__replace-preserve-case-toggle"), null);
 
-            SetPlaceholder(_searchField, "Find");
-            SetPlaceholder(_replaceField, "Replace");
+            SetPlaceholder(_searchField, "search.find");
+            SetPlaceholder(_replaceField, "search.replace");
 
             _searchField?.RegisterValueChangedCallback(OnSearchValueChanged);
 
@@ -237,7 +237,7 @@ namespace NKStudio.TabularEditor.Window
             if (replaced != value)
             {
                 // 실행 직후 창이 Refresh()를 불러 결과가 다시 만들어진다.
-                CommandRequested?.Invoke(new SetCellsCommand("Replace", coord.Row, coord.Column, new[] { new[] { replaced } }));
+                CommandRequested?.Invoke(new SetCellsCommand(Localization.Get("undo.replace"), coord.Row, coord.Column, new[] { new[] { replaced } }));
             }
 
             SelectFirstMatchAfter(coord);
@@ -269,10 +269,10 @@ namespace NKStudio.TabularEditor.Window
             if (edits.Count == 0)
                 return;
 
-            CommandRequested?.Invoke(new ReplaceCellsCommand("Replace All", edits));
+            CommandRequested?.Invoke(new ReplaceCellsCommand(Localization.Get("undo.replaceAll"), edits));
 
             if (_countLabel != null)
-                _countLabel.text = edits.Count == 1 ? "Replaced 1 cell" : $"Replaced {edits.Count} cells";
+                _countLabel.text = Localization.Count("count.replaced", edits.Count);
         }
 
         /// <summary>
@@ -309,13 +309,22 @@ namespace NKStudio.TabularEditor.Window
                 _replaceAllButton.clicked -= ReplaceAll;
         }
 
-        private static void SetPlaceholder(TextField field, string placeholder)
+        private static void SetPlaceholder(TextField field, string key)
         {
             if (field == null)
                 return;
 
-            field.textEdition.placeholder = placeholder;
+            Localization.BindPlaceholder(field, key);
             field.textEdition.hidePlaceholderOnFocus = false;
+        }
+
+        /// <summary>
+        /// 언어가 바뀌었을 때 개수 표시를 다시 씁니다. 현재 결과 위치는 그대로 둔다.
+        /// </summary>
+        public void RefreshLanguage()
+        {
+            if (_query != null)
+                UpdateCountLabel();
         }
 
         // TextField.Focus()는 래퍼에 포커스를 주는 경우가 있어 내부 입력 요소를 직접 지정한다.
@@ -528,13 +537,13 @@ namespace NKStudio.TabularEditor.Window
 
             if (_matches.Count == 0)
             {
-                _countLabel.text = "No results";
+                _countLabel.text = Localization.Get("search.noResults");
                 return;
             }
 
             _countLabel.text = _currentIndex >= 0
                 ? $"{_currentIndex + 1}/{_matches.Count}"
-                : _matches.Count == 1 ? "1 match" : $"{_matches.Count} matches";
+                : Localization.Count("count.match", _matches.Count);
         }
 
         // 버튼을 눌러 켜고 끄는 옵션 토글이다. 켜진 상태는 클래스로 표시한다.

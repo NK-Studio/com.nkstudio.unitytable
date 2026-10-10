@@ -45,7 +45,7 @@ namespace NKStudio.TabularEditor.Commands
         /// <summary>
         /// 작업 이름입니다.
         /// </summary>
-        public string Name => "Move Rows";
+        public string Name => Localization.Get("undo.moveRows");
 
         /// <summary>
         /// 행을 옮깁니다.

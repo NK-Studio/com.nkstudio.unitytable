@@ -27,7 +27,7 @@ namespace NKStudio.TabularEditor.Commands
         /// <summary>
         /// 작업 이름입니다.
         /// </summary>
-        public string Name => "Delete Rows";
+        public string Name => Localization.Get("undo.deleteRows");
 
         /// <summary>
         /// 행을 제거하고 제거된 값을 기록합니다.
