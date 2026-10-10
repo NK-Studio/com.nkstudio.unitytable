@@ -1689,8 +1689,10 @@ namespace NKStudio.TabularEditor.Window
                     continue;
 
                 Label measureLabel = coord.Row < HeaderRowCount ? _headerMeasureLabel : _measureLabel;
+
+                // 최대 너비를 넘는 글자는 재도 결과가 같다(최대 너비로 잘린다). 긴 셀을 통째로 재지 않는다.
                 float textWidth = measureLabel.MeasureTextSize(
-                    _document.GetCell(coord.Row, coord.Column),
+                    CellDisplayText.Clip(_document.GetCell(coord.Row, coord.Column), maxWidth, _metrics.FontSize),
                     0f,
                     VisualElement.MeasureMode.Undefined,
                     0f,
@@ -1759,10 +1761,13 @@ namespace NKStudio.TabularEditor.Window
 
             float widest = 0f;
 
+            // 최대 너비를 넘는 글자는 재도 결과가 같다(최대 너비로 잘린다). 긴 셀을 통째로 재지 않는다.
+            float maxWidth = MaxAutoFitWidth();
+
             foreach (int row in candidates)
             {
                 Vector2 size = measureLabel.MeasureTextSize(
-                    _document.GetCell(row, columnIndex),
+                    CellDisplayText.Clip(_document.GetCell(row, columnIndex), maxWidth, _metrics.FontSize),
                     0f,
                     VisualElement.MeasureMode.Undefined,
                     0f,
@@ -2331,7 +2336,8 @@ namespace NKStudio.TabularEditor.Window
 
                 if (label != null)
                 {
-                    label.text = value;
+                    // 칸에 보일 만큼만 넘긴다(CellDisplayText). 에셋 경로 해석은 원래 값으로 한다.
+                    label.text = CellDisplayText.Clip(value, _columnWidths[columnIndex], _metrics.FontSize);
                     BindAssetIcon(cell, label, columnIndex, value);
                 }
 
