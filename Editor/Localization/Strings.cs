@@ -238,6 +238,7 @@ namespace NKStudio.TabularEditor
             ["undo.editCell"] = ("Edit Cell", "셀 편집"),
             ["undo.fillRange"] = ("Fill Range", "범위 채우기"),
             ["undo.fill"] = ("Fill", "채우기"),
+            ["undo.dropAsset"] = ("Drop Asset", "에셋 넣기"),
             ["undo.paste"] = ("Paste", "붙여넣기"),
             ["undo.clearRange"] = ("Clear Range", "범위 비우기"),
             ["undo.insertRows"] = ("Insert Rows", "행 삽입"),

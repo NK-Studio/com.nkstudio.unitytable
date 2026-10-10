@@ -161,6 +161,8 @@ namespace NKStudio.TabularEditor.Window
         private HashSet<CellCoord> _matches;
         private DragSelectMode _dragSelectMode;
         private bool _isFillDragging;
+
+        // 미리보기 상자에 보일 범위다. 채우기 핸들을 끄는 동안과, 에셋을 셀로 끌어 오는 동안 함께 쓴다.
         private FillTarget? _fillTarget;
         private Vector2 _fillPointerPosition;
         private bool _isEditing;
@@ -294,6 +296,13 @@ namespace NKStudio.TabularEditor.Window
             _container.RegisterCallback<PointerMoveEvent>(OnAssetHover, TrickleDown.TrickleDown);
             _container.RegisterCallback<PointerLeaveEvent>(OnAssetHoverLeave);
             AssetPathIndex.Changed += RefreshAssetColumns;
+
+            // Project 창에서 에셋을 끌어다 놓으면 셀에 그 경로를 적는다.
+            // 활성 셀 위의 숨은 편집칸(TextField)이 먼저 받아 글자로 넣지 않도록 트리클로 받는다.
+            _container.RegisterCallback<DragUpdatedEvent>(OnAssetDragUpdated, TrickleDown.TrickleDown);
+            _container.RegisterCallback<DragPerformEvent>(OnAssetDragPerform, TrickleDown.TrickleDown);
+            _container.RegisterCallback<DragLeaveEvent>(OnAssetDragLeave);
+            _container.RegisterCallback<DragExitedEvent>(OnAssetDragExited);
 
             ApplyMetricsToElements();
         }
@@ -608,6 +617,109 @@ namespace NKStudio.TabularEditor.Window
             _assetHoverShow?.Pause();
             _assetHoverShow = null;
             _assetCard?.Hide();
+        }
+
+        // ── 에셋 끌어다 놓기 ──────────────────────────────────────────
+        // Project 창에서 에셋을 셀로 끌어 오면 그 셀부터 아래로 한 칸에 하나씩 경로를 적는다(문서 끝을 넘는 만큼은 버린다).
+        // 형식은 열이 이미 쓰는 것을 따른다(AssetPathFormat). Resources 경로 열에 Resources 밖 에셋을 놓으면 거부한다.
+
+        private enum AssetDropPlan
+        {
+            NotAssetDrag,
+            Rejected,
+            Accepted,
+        }
+
+        private AssetDropPlan PlanAssetDrop(Vector2 position, out CellCoord origin, out string[][] values)
+        {
+            origin = default;
+            values = null;
+
+            if (_document == null)
+                return AssetDropPlan.NotAssetDrag;
+
+            List<string> assetPaths = AssetDragAndDrop.GetDraggedAssetPaths();
+
+            if (assetPaths.Count == 0)
+                return AssetDropPlan.NotAssetDrag;
+
+            if (TryGetCellAt(position, out origin) == false && TryGetNearestCellAt(position, out origin) == false)
+                return AssetDropPlan.Rejected;
+
+            AssetPathStyle? columnStyle = AssetPathFormat.Detect(EnumerateBodyValues(origin.Column));
+            int count = Math.Min(assetPaths.Count, _document.RowCount - origin.Row);
+            values = new string[count][];
+
+            for (int index = 0; index < count; index++)
+            {
+                string assetPath = assetPaths[index];
+
+                // 형식이 정해지지 않은 열이면 Resources 안의 에셋은 Resources 경로로, 밖의 에셋은 프로젝트 경로로 적는다.
+                string value = columnStyle.HasValue
+                    ? AssetPathFormat.ToCellValue(assetPath, columnStyle.Value)
+                    : AssetPathFormat.ToCellValue(assetPath, AssetPathStyle.Resources) ?? assetPath;
+
+                if (value == null)
+                    return AssetDropPlan.Rejected;
+
+                values[index] = new[] { value };
+            }
+
+            return AssetDropPlan.Accepted;
+        }
+
+        private void OnAssetDragUpdated(DragUpdatedEvent evt)
+        {
+            AssetDropPlan plan = PlanAssetDrop(evt.mousePosition, out CellCoord origin, out string[][] values);
+
+            if (plan == AssetDropPlan.NotAssetDrag)
+                return;
+
+            evt.StopPropagation();
+            ClearAssetHover();
+            AssetDragAndDrop.SetAccepted(plan == AssetDropPlan.Accepted);
+
+            _fillTarget = plan == AssetDropPlan.Accepted
+                ? new FillTarget(FillDirection.Down, values.Length, origin.Row, origin.Column, origin.Row + values.Length - 1, origin.Column)
+                : null;
+
+            UpdateSelectionBoxPlacement();
+        }
+
+        private void OnAssetDragPerform(DragPerformEvent evt)
+        {
+            AssetDropPlan plan = PlanAssetDrop(evt.mousePosition, out CellCoord origin, out string[][] values);
+            ClearAssetDropPreview();
+
+            if (plan != AssetDropPlan.Accepted)
+                return;
+
+            evt.StopPropagation();
+            AssetDragAndDrop.Accept();
+
+            CommitEdit();
+            CommandRequested?.Invoke(new SetCellsCommand(Localization.Get("undo.dropAsset"), origin.Row, origin.Column, values));
+            Selection.SetRange(origin.Row, origin.Column, origin.Row + values.Length - 1, origin.Column);
+            FocusGrid();
+        }
+
+        private void OnAssetDragLeave(DragLeaveEvent evt)
+        {
+            ClearAssetDropPreview();
+        }
+
+        private void OnAssetDragExited(DragExitedEvent evt)
+        {
+            ClearAssetDropPreview();
+        }
+
+        private void ClearAssetDropPreview()
+        {
+            if (_isFillDragging || _fillTarget == null)
+                return;
+
+            _fillTarget = null;
+            UpdateSelectionBoxPlacement();
         }
 
         // 채우기 핸들: 선택 범위 오른쪽 아래의 동그란 핸들을 끌어 늘린 칸을 채운다. 규칙은 FillDrag·FillSeries.
@@ -1425,6 +1537,10 @@ namespace NKStudio.TabularEditor.Window
             _container.UnregisterCallback<PointerMoveEvent>(OnAssetHover, TrickleDown.TrickleDown);
             _container.UnregisterCallback<PointerLeaveEvent>(OnAssetHoverLeave);
             AssetPathIndex.Changed -= RefreshAssetColumns;
+            _container.UnregisterCallback<DragUpdatedEvent>(OnAssetDragUpdated, TrickleDown.TrickleDown);
+            _container.UnregisterCallback<DragPerformEvent>(OnAssetDragPerform, TrickleDown.TrickleDown);
+            _container.UnregisterCallback<DragLeaveEvent>(OnAssetDragLeave);
+            _container.UnregisterCallback<DragExitedEvent>(OnAssetDragExited);
             _assetCard.Dispose();
             _header.UnregisterCallback<PointerDownEvent>(OnHeaderPointerDown, TrickleDown.TrickleDown);
             _header.RemoveManipulator(_headerMenuManipulator);
