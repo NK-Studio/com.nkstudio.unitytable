@@ -633,6 +633,207 @@ namespace NKStudio.TabularEditor.Window
         }
 
         /// <summary>
+        /// 선택한 행 위에 선택한 행 수만큼 빈 행을 넣습니다.
+        /// </summary>
+        public void InsertRowsAbove()
+        {
+            if (_document == null)
+                return;
+
+            RequestInsertRows(Selection.MinRow, SelectedRowCount);
+        }
+
+        /// <summary>
+        /// 선택한 행 아래에 선택한 행 수만큼 빈 행을 넣습니다.
+        /// </summary>
+        public void InsertRowsBelow()
+        {
+            if (_document == null)
+                return;
+
+            RequestInsertRows(Selection.MaxRow + 1, SelectedRowCount);
+        }
+
+        /// <summary>
+        /// 선택한 열 왼쪽에 선택한 열 수만큼 빈 열을 넣습니다.
+        /// </summary>
+        public void InsertColumnsLeft()
+        {
+            if (_document == null)
+                return;
+
+            RequestInsertColumns(Selection.MinColumn, SelectedColumnCount);
+        }
+
+        /// <summary>
+        /// 선택한 열 오른쪽에 선택한 열 수만큼 빈 열을 넣습니다.
+        /// </summary>
+        public void InsertColumnsRight()
+        {
+            if (_document == null)
+                return;
+
+            RequestInsertColumns(Selection.MaxColumn + 1, SelectedColumnCount);
+        }
+
+        /// <summary>
+        /// 열을 선택했으면 그 열을, 그 밖에는 선택이 걸친 행을 삭제합니다. 마지막 한 행·열은 남깁니다.
+        /// Delete 키와 달리 셀 범위를 선택했을 때도 내용이 아니라 행을 지웁니다.
+        /// </summary>
+        public void DeleteSelectedRowsOrColumns()
+        {
+            if (_document == null)
+                return;
+
+            CommitEdit();
+
+            if (Selection.Kind == CellSelectionKind.Columns)
+            {
+                if (CanRemoveColumns(SelectedColumnCount))
+                    RequestRemoveColumns(Selection.MinColumn, SelectedColumnCount);
+
+                return;
+            }
+
+            if (CanRemoveRows(SelectedRowCount))
+                RequestRemoveRows(Selection.MinRow, SelectedRowCount);
+        }
+
+        /// <summary>
+        /// 선택이 걸친 행을 바로 아래에 복제하고, 선택을 복제본으로 옮깁니다.
+        /// </summary>
+        public void DuplicateSelectedRows()
+        {
+            if (_document == null)
+                return;
+
+            CommitEdit();
+
+            int count = SelectedRowCount;
+            List<string[]> values = new(count);
+
+            for (int row = Selection.MinRow; row <= Selection.MaxRow; row++)
+                values.Add(_document.GetRowValues(row));
+
+            CommandRequested?.Invoke(new InsertRowsCommand(Selection.MaxRow + 1, count, values));
+            ShiftSelection(count, 0);
+        }
+
+        /// <summary>
+        /// 선택이 걸친 행을 delta칸 옮기고 선택도 따라 옮깁니다. 헤더 행 구간과 본문 구간 사이는 넘지 않습니다.
+        /// </summary>
+        public void MoveSelectedRows(int delta)
+        {
+            if (_document == null || delta == 0)
+                return;
+
+            int firstRow = Selection.MinRow;
+            int lastRow = Selection.MaxRow;
+
+            // 헤더 행과 본문 행에 걸쳐 있으면 어느 구간에서 움직일지 정할 수 없다.
+            bool isHeaderBlock = firstRow < HeaderRowCount;
+
+            if (isHeaderBlock && lastRow >= HeaderRowCount)
+                return;
+
+            int regionFirst = isHeaderBlock ? 0 : HeaderRowCount;
+            int regionLast = isHeaderBlock ? HeaderRowCount - 1 : MaxRow;
+
+            if (firstRow + delta < regionFirst || lastRow + delta > regionLast)
+                return;
+
+            CommitEdit();
+            CommandRequested?.Invoke(new MoveRowsCommand(firstRow, SelectedRowCount, delta));
+            ShiftSelection(delta, 0);
+        }
+
+        /// <summary>
+        /// 선택이 걸친 열을 delta칸 옮기고 선택도 따라 옮깁니다.
+        /// </summary>
+        public void MoveSelectedColumns(int delta)
+        {
+            if (_document == null || delta == 0)
+                return;
+
+            int firstColumn = Selection.MinColumn;
+            int lastColumn = Selection.MaxColumn;
+
+            if (firstColumn + delta < 0 || lastColumn + delta > MaxColumn)
+                return;
+
+            CommitEdit();
+            CommandRequested?.Invoke(new MoveColumnsCommand(firstColumn, SelectedColumnCount, delta));
+            ShiftSelection(0, delta);
+        }
+
+        /// <summary>
+        /// 값이 이어진 구간의 끝, 다음 값, 또는 표 끝으로 이동합니다(Excel의 Ctrl+방향키). 규칙은 <see cref="TableEdgeFinder"/>.
+        /// </summary>
+        public void MoveToDataEdge(int rowDelta, int columnDelta, bool extendSelection)
+        {
+            if (_document == null)
+                return;
+
+            // 확장은 범위의 끝을, 그냥 이동은 활성 셀을 기준으로 한다. MoveActiveCell과 같다.
+            CellCoord origin = extendSelection ? Selection.Focus : Selection.Anchor;
+            CellCoord target = TableEdgeFinder.FindEdge(_document, origin, rowDelta, columnDelta);
+
+            SetActiveCell(target, extendSelection);
+        }
+
+        /// <summary>
+        /// 편집 중인 값을 선택 범위의 모든 셀에 씁니다(Excel의 Ctrl+Enter). 한 칸만 선택했으면 평소 확정과 같습니다.
+        /// </summary>
+        public void CommitEditToSelection()
+        {
+            if (!_isEditing)
+                return;
+
+            if (Selection.IsSingleCell)
+            {
+                CommitEdit();
+                return;
+            }
+
+            string value = _editField.value ?? string.Empty;
+            string[][] values = new string[SelectedRowCount][];
+
+            for (int row = 0; row < values.Length; row++)
+                values[row] = CreateFilledRow(value, SelectedColumnCount);
+
+            EndEdit();
+            CommandRequested?.Invoke(new SetCellsCommand("범위 채우기", Selection.MinRow, Selection.MinColumn, values));
+            RefreshCellStates();
+        }
+
+        private static string[] CreateFilledRow(string value, int length)
+        {
+            string[] row = new string[length];
+            Array.Fill(row, value);
+            return row;
+        }
+
+        private int SelectedRowCount => Selection.MaxRow - Selection.MinRow + 1;
+
+        private int SelectedColumnCount => Selection.MaxColumn - Selection.MinColumn + 1;
+
+        // 행·열을 옮기거나 복제한 뒤 선택을 같은 모양 그대로 따라 옮긴다. 행/열 전체 선택이면 그 종류도 유지한다.
+        private void ShiftSelection(int rowDelta, int columnDelta)
+        {
+            CellCoord anchor = Selection.Anchor;
+            CellCoord focus = Selection.Focus;
+
+            Selection.SetRange(
+                anchor.Row + rowDelta,
+                anchor.Column + columnDelta,
+                focus.Row + rowDelta,
+                focus.Column + columnDelta,
+                Selection.Kind);
+
+            ScrollToActiveCell();
+        }
+
+        /// <summary>
         /// 표 전체를 선택합니다.
         /// </summary>
         public void SelectAll()
@@ -1940,11 +2141,11 @@ namespace NKStudio.TabularEditor.Window
         private void AppendRowActions(DropdownMenu menu)
         {
             int firstRow = Selection.MinRow;
-            int lastRow = Selection.MaxRow;
-            int count = lastRow - firstRow + 1;
+            int count = SelectedRowCount;
 
-            menu.AppendAction("위에 행 삽입", _ => RequestInsertRows(firstRow, count));
-            menu.AppendAction("아래에 행 삽입", _ => RequestInsertRows(lastRow + 1, count));
+            menu.AppendAction("위에 행 삽입", _ => InsertRowsAbove());
+            menu.AppendAction("아래에 행 삽입", _ => InsertRowsBelow());
+            menu.AppendAction("행 복제", _ => DuplicateSelectedRows());
 
             string label = count > 1 ? $"행 {count}개 삭제" : "행 삭제";
             menu.AppendAction(
@@ -1956,11 +2157,10 @@ namespace NKStudio.TabularEditor.Window
         private void AppendColumnActions(DropdownMenu menu)
         {
             int firstColumn = Selection.MinColumn;
-            int lastColumn = Selection.MaxColumn;
-            int count = lastColumn - firstColumn + 1;
+            int count = SelectedColumnCount;
 
-            menu.AppendAction("왼쪽에 열 삽입", _ => RequestInsertColumns(firstColumn, count));
-            menu.AppendAction("오른쪽에 열 삽입", _ => RequestInsertColumns(lastColumn + 1, count));
+            menu.AppendAction("왼쪽에 열 삽입", _ => InsertColumnsLeft());
+            menu.AppendAction("오른쪽에 열 삽입", _ => InsertColumnsRight());
 
             string label = count > 1 ? $"열 {count}개 삭제" : "열 삭제";
             menu.AppendAction(

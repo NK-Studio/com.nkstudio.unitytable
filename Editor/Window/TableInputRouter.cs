@@ -122,10 +122,21 @@ namespace NKStudio.TabularEditor.Window
 
         private void HandleEditingKey(KeyDownEvent evt)
         {
+            // 행·열 추가는 입력 중에도 바로 쓸 수 있게, 입력을 확정한 뒤 실행한다.
+            if (evt.actionKey && evt.altKey && TryInsertByArrow(evt))
+                return;
+
             switch (evt.keyCode)
             {
                 case KeyCode.Return:
                 case KeyCode.KeypadEnter:
+                    if (evt.actionKey)
+                    {
+                        _gridView.CommitEditToSelection();
+                        Consume(evt);
+                        return;
+                    }
+
                     _gridView.CommitEdit();
                     _gridView.MoveActiveCell(evt.shiftKey ? -1 : 1, 0, false);
                     Consume(evt);
@@ -216,6 +227,9 @@ namespace NKStudio.TabularEditor.Window
         private void HandleNavigationKey(KeyDownEvent evt)
         {
             if (evt.actionKey && HandleActionKey(evt))
+                return;
+
+            if (evt.altKey && evt.actionKey == false && HandleMoveKey(evt))
                 return;
 
             if (evt.actionKey || evt.altKey)
@@ -325,10 +339,105 @@ namespace NKStudio.TabularEditor.Window
             // 편집 진입은 필드의 ChangeEvent에서 감지한다.
         }
 
-        private bool HandleActionKey(KeyDownEvent evt)
+        // Ctrl/Cmd+Alt/Option+방향키: 그 방향에 행·열을 추가한다.
+        private bool TryInsertByArrow(KeyDownEvent evt)
         {
             switch (evt.keyCode)
             {
+                case KeyCode.DownArrow:
+                    _gridView.InsertRowsBelow();
+                    break;
+
+                case KeyCode.UpArrow:
+                    _gridView.InsertRowsAbove();
+                    break;
+
+                case KeyCode.RightArrow:
+                    _gridView.InsertColumnsRight();
+                    break;
+
+                case KeyCode.LeftArrow:
+                    _gridView.InsertColumnsLeft();
+                    break;
+
+                default:
+                    return false;
+            }
+
+            Consume(evt);
+            return true;
+        }
+
+        // Alt/Option+방향키: 선택한 행·열을 한 칸 옮긴다.
+        private bool HandleMoveKey(KeyDownEvent evt)
+        {
+            switch (evt.keyCode)
+            {
+                case KeyCode.UpArrow:
+                    _gridView.MoveSelectedRows(-1);
+                    break;
+
+                case KeyCode.DownArrow:
+                    _gridView.MoveSelectedRows(1);
+                    break;
+
+                case KeyCode.LeftArrow:
+                    _gridView.MoveSelectedColumns(-1);
+                    break;
+
+                case KeyCode.RightArrow:
+                    _gridView.MoveSelectedColumns(1);
+                    break;
+
+                default:
+                    return false;
+            }
+
+            Consume(evt);
+            return true;
+        }
+
+        private bool HandleActionKey(KeyDownEvent evt)
+        {
+            if (evt.altKey)
+                return TryInsertByArrow(evt);
+
+            switch (evt.keyCode)
+            {
+                case KeyCode.UpArrow:
+                    _gridView.MoveToDataEdge(-1, 0, evt.shiftKey);
+                    Consume(evt);
+                    return true;
+
+                case KeyCode.DownArrow:
+                    _gridView.MoveToDataEdge(1, 0, evt.shiftKey);
+                    Consume(evt);
+                    return true;
+
+                case KeyCode.LeftArrow:
+                    _gridView.MoveToDataEdge(0, -1, evt.shiftKey);
+                    Consume(evt);
+                    return true;
+
+                case KeyCode.RightArrow:
+                    _gridView.MoveToDataEdge(0, 1, evt.shiftKey);
+                    Consume(evt);
+                    return true;
+
+                case KeyCode.Minus:
+                case KeyCode.KeypadMinus:
+                    _gridView.DeleteSelectedRowsOrColumns();
+                    Consume(evt);
+                    return true;
+
+                case KeyCode.D:
+                    // Unity 전역 Duplicate가 씬 오브젝트를 복제하지 않도록 여기서 반드시 소비한다.
+                    // 같은 입력이 "Duplicate" 명령으로도 올 수 있어 복사·붙여넣기와 같은 중복 방지를 거친다.
+                    if (ShouldRunClipboard("Duplicate"))
+                        _gridView.DuplicateSelectedRows();
+                    Consume(evt);
+                    return true;
+
                 case KeyCode.S:
                     SaveRequested?.Invoke();
                     Consume(evt);
@@ -439,6 +548,12 @@ namespace NKStudio.TabularEditor.Window
 
                     break;
 
+                case "Duplicate":
+                    if (ShouldRunClipboard("Duplicate"))
+                        _gridView.DuplicateSelectedRows();
+
+                    break;
+
                 case "Delete":
                 case "SoftDelete":
                     DeleteRequested?.Invoke();
@@ -466,6 +581,7 @@ namespace NKStudio.TabularEditor.Window
                 or "Cut"
                 or "Paste"
                 or "SelectAll"
+                or "Duplicate"
                 or "Delete"
                 or "SoftDelete"
                 or "Undo"

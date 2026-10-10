@@ -36,13 +36,21 @@ https://github.com/NK-Studio/com.nkstudio.unitytable.git
 | Enter / Shift+Enter | 아래/위 이동. 편집 중이면 확정 후 이동 |
 | Home / End | 행의 처음/끝 |
 | Ctrl+Home / Ctrl+End | 표의 처음/끝 |
+| Ctrl+방향키 | 값이 이어진 구간의 끝 → 다음 값 → 표 끝 순으로 이동 (Excel 방식). Shift를 더하면 선택 확장 |
 | PageUp / PageDown | 화면 단위 이동 |
 | F2 또는 문자 입력 | 셀 편집 시작 |
 | 더블클릭 | 셀 편집 시작 |
 | 방향키 (타이핑 중) | 입력을 확정하고 그 방향으로 이동 |
 | 방향키 (F2 편집 중) | 캐럿 이동 |
+| Ctrl+Enter (편집 중) | 입력한 값을 선택 범위 전체에 채움 |
 | Esc | 편집 취소 |
 | Delete / Backspace | 선택 종류에 따라 행·열 삭제 또는 내용 비우기 |
+| Ctrl+Alt+↓ / ↑ | 아래 / 위에 행 추가 (선택한 행 수만큼, 편집 중이면 확정 후) |
+| Ctrl+Alt+→ / ← | 오른쪽 / 왼쪽에 열 추가 (선택한 열 수만큼, 편집 중이면 확정 후) |
+| Ctrl+- | 선택한 행 삭제. 열을 선택했으면 열 삭제 |
+| Ctrl+D | 선택한 행을 바로 아래에 복제 |
+| Alt+↑ / ↓ | 선택한 행을 위 / 아래로 한 칸 이동 (헤더 행과 본문 행 사이는 넘지 않음) |
+| Alt+← / → | 선택한 열을 왼쪽 / 오른쪽으로 한 칸 이동 |
 | Ctrl+S | 저장 |
 | Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y | 되돌리기 / 다시 실행 |
 | Ctrl+C / Ctrl+X / Ctrl+V | 복사 / 잘라내기 / 붙여넣기 |
@@ -50,7 +58,7 @@ https://github.com/NK-Studio/com.nkstudio.unitytable.git
 | Ctrl+F | 검색 |
 | F3 / Shift+F3 | 다음 / 이전 일치 항목 |
 
-macOS에서는 Ctrl 대신 Cmd를 사용합니다.
+macOS에서는 Ctrl 대신 Cmd, Alt 대신 Option을 사용합니다.
 
 ## 행과 열 다루기
 
