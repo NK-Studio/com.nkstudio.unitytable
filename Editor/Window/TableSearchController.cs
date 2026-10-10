@@ -87,8 +87,8 @@ namespace NKStudio.TabularEditor.Window
             _verticalToggle = new OptionToggle(root.Q<Button>("table-editor__search-vertical-toggle"), RebuildMatches);
             _preserveCaseToggle = new OptionToggle(root.Q<Button>("table-editor__replace-preserve-case-toggle"), null);
 
-            SetPlaceholder(_searchField, "찾기");
-            SetPlaceholder(_replaceField, "바꾸기");
+            SetPlaceholder(_searchField, "Find");
+            SetPlaceholder(_replaceField, "Replace");
 
             _searchField?.RegisterValueChangedCallback(OnSearchValueChanged);
 
@@ -237,7 +237,7 @@ namespace NKStudio.TabularEditor.Window
             if (replaced != value)
             {
                 // 실행 직후 창이 Refresh()를 불러 결과가 다시 만들어진다.
-                CommandRequested?.Invoke(new SetCellsCommand("바꾸기", coord.Row, coord.Column, new[] { new[] { replaced } }));
+                CommandRequested?.Invoke(new SetCellsCommand("Replace", coord.Row, coord.Column, new[] { new[] { replaced } }));
             }
 
             SelectFirstMatchAfter(coord);
@@ -269,10 +269,10 @@ namespace NKStudio.TabularEditor.Window
             if (edits.Count == 0)
                 return;
 
-            CommandRequested?.Invoke(new ReplaceCellsCommand("모두 바꾸기", edits));
+            CommandRequested?.Invoke(new ReplaceCellsCommand("Replace All", edits));
 
             if (_countLabel != null)
-                _countLabel.text = $"{edits.Count}개 셀 바꿈";
+                _countLabel.text = edits.Count == 1 ? "Replaced 1 cell" : $"Replaced {edits.Count} cells";
         }
 
         /// <summary>
@@ -528,13 +528,13 @@ namespace NKStudio.TabularEditor.Window
 
             if (_matches.Count == 0)
             {
-                _countLabel.text = "결과 없음";
+                _countLabel.text = "No results";
                 return;
             }
 
             _countLabel.text = _currentIndex >= 0
                 ? $"{_currentIndex + 1}/{_matches.Count}"
-                : $"{_matches.Count}개";
+                : _matches.Count == 1 ? "1 match" : $"{_matches.Count} matches";
         }
 
         // 버튼을 눌러 켜고 끄는 옵션 토글이다. 켜진 상태는 클래스로 표시한다.

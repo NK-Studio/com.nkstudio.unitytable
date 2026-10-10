@@ -40,18 +40,18 @@ namespace NKStudio.TabularEditor.Window
             _panel = new VisualElement();
             _panel.AddToClassList(PanelClassName);
 
-            Label title = new("정렬");
+            Label title = new("Sort");
             title.AddToClassList(TitleClassName);
             _panel.Add(title);
 
             VisualElement actions = new();
             actions.AddToClassList(ActionRowClassName);
 
-            _ascendingButton = new Button(() => RequestSort(false)) { text = "오름차순 정렬" };
+            _ascendingButton = new Button(() => RequestSort(false)) { text = "Sort Ascending" };
             _ascendingButton.AddToClassList(ActionButtonClassName);
             actions.Add(_ascendingButton);
 
-            _descendingButton = new Button(() => RequestSort(true)) { text = "내림차순 정렬" };
+            _descendingButton = new Button(() => RequestSort(true)) { text = "Sort Descending" };
             _descendingButton.AddToClassList(ActionButtonClassName);
             actions.Add(_descendingButton);
 

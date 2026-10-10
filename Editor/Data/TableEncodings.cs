@@ -54,8 +54,8 @@ namespace NKStudio.TabularEditor.Data
             new("UTF-8 with BOM", Utf8CodePage, true),
             new("UTF-16 LE", Utf16LeCodePage, true),
             new("UTF-16 BE", Utf16BeCodePage, true),
-            new("한국어 (CP949)", 949, false),
-            new("한국어 (EUC-KR)", 51949, false),
+            new("Korean (CP949)", 949, false),
+            new("Korean (EUC-KR)", 51949, false),
             new("Windows 1252", 1252, false),
             new("ISO 8859-1", 28591, false),
             new("ISO 8859-15", 28605, false),
@@ -63,11 +63,11 @@ namespace NKStudio.TabularEditor.Data
             new("Windows 1251", 1251, false),
             new("KOI8-R", 20866, false),
             new("Windows 1250", 1250, false),
-            new("일본어 (Shift_JIS)", 932, false),
-            new("일본어 (EUC-JP)", 51932, false),
-            new("중국어 간체 (GBK)", 936, false),
-            new("중국어 간체 (GB18030)", 54936, false),
-            new("중국어 번체 (Big5)", 950, false),
+            new("Japanese (Shift_JIS)", 932, false),
+            new("Japanese (EUC-JP)", 51932, false),
+            new("Chinese Simplified (GBK)", 936, false),
+            new("Chinese Simplified (GB18030)", 54936, false),
+            new("Chinese Traditional (Big5)", 950, false),
         };
 
         public static IReadOnlyList<Entry> Entries => AllEntries;

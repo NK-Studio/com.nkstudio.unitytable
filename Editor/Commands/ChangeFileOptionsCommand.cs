@@ -16,7 +16,7 @@ namespace NKStudio.TabularEditor.Commands
             _newOptions = newOptions.Clone();
         }
 
-        public string Name => "파일 형식 변경";
+        public string Name => "Change File Format";
 
         public void Execute(TableDocument document)
         {

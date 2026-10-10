@@ -66,7 +66,7 @@ namespace NKStudio.TabularEditor.Window
 
             _closeButton = new Button(Close);
             _closeButton.AddToClassList("table-editor__icon-button");
-            _closeButton.tooltip = "닫기 (Esc)";
+            _closeButton.tooltip = "Close (Esc)";
             VisualElement closeIcon = new();
             closeIcon.AddToClassList("table-editor__icon");
             closeIcon.AddToClassList("table-editor__icon--close");
@@ -74,35 +74,35 @@ namespace NKStudio.TabularEditor.Window
             header.Add(_closeButton);
             _card.Add(header);
 
-            _encodingField = AddDropdown("인코딩");
+            _encodingField = AddDropdown("Encoding");
 
-            _delimiterField = AddDropdown("구분 기호");
+            _delimiterField = AddDropdown("Delimiter");
             _delimiterField.choices = BuildChoices(DelimiterChoices);
-            _delimiterOtherField = AddOtherField(_delimiterField, "구분 기호 문자 하나");
+            _delimiterOtherField = AddOtherField(_delimiterField, "Single delimiter character");
 
-            _quoteField = AddDropdown("따옴표");
+            _quoteField = AddDropdown("Quote");
             _quoteField.choices = BuildChoices(QuoteChoices);
-            _quoteOtherField = AddOtherField(_quoteField, "따옴표 문자 하나");
+            _quoteOtherField = AddOtherField(_quoteField, "Single quote character");
 
-            _quoteModeField = AddDropdown("따옴표 모드");
+            _quoteModeField = AddDropdown("Quote Mode");
             _quoteModeField.choices = new List<string>(QuoteModeChoices);
 
-            _newLineField = AddDropdown("줄 끝");
+            _newLineField = AddDropdown("Line Ending");
             _newLineField.choices = new List<string> { NewLineChoices[0].Label, NewLineChoices[1].Label };
 
-            _endsWithNewLineToggle = new Toggle("마지막 줄 바꿈 추가");
+            _endsWithNewLineToggle = new Toggle("Final Newline");
             _endsWithNewLineToggle.AddToClassList("table-editor__dialog-toggle");
             _card.Add(_endsWithNewLineToggle);
 
             VisualElement footer = new();
             footer.AddToClassList("table-editor__dialog-footer");
 
-            _cancelButton = CreateFooterButton("취소", "table-editor__dialog-button--secondary", Close,
-                "바꾸지 않고 닫습니다.");
-            _reopenButton = CreateFooterButton("다시 열기", "table-editor__dialog-button--primary", OnReopenClicked,
-                "이 형식으로 파일을 다시 읽습니다. 저장하지 않은 편집은 버립니다.");
-            _applyButton = CreateFooterButton("적용", "table-editor__dialog-button--primary", OnApplyClicked,
-                "셀 값은 그대로 두고 저장할 형식만 바꿉니다. 저장해야 파일에 반영됩니다.");
+            _cancelButton = CreateFooterButton("Cancel", "table-editor__dialog-button--secondary", Close,
+                "Close without changes.");
+            _reopenButton = CreateFooterButton("Reopen", "table-editor__dialog-button--primary", OnReopenClicked,
+                "Re-read the file in this format. Unsaved edits are discarded.");
+            _applyButton = CreateFooterButton("Apply", "table-editor__dialog-button--primary", OnApplyClicked,
+                "Change only the save format and keep cell values. Takes effect in the file when you save.");
 
             footer.Add(_cancelButton);
             footer.Add(_reopenButton);
@@ -136,7 +136,7 @@ namespace NKStudio.TabularEditor.Window
         {
             current ??= new TableFileOptions();
 
-            _title.text = format == TableFormat.Tsv ? "TSV 파일 형식" : "CSV 파일 형식";
+            _title.text = format == TableFormat.Tsv ? "TSV File Format" : "CSV File Format";
 
             FillEncodingChoices(current.Encoding);
             SelectChar(_delimiterField, _delimiterOtherField, DelimiterChoices, current.Delimiter);
@@ -179,7 +179,7 @@ namespace NKStudio.TabularEditor.Window
             return field;
         }
 
-        // '기타...'를 고르면 그 아래에 한 글자 입력칸을 보여 준다.
+        // 'Other...'를 고르면 그 아래에 한 글자 입력칸을 보여 준다.
         private TextField AddOtherField(DropdownField owner, string placeholder)
         {
             TextField field = new() { maxLength = 1 };
@@ -222,7 +222,7 @@ namespace NKStudio.TabularEditor.Window
 
             if (selected < 0)
             {
-                labels.Add($"{current.EncodingName} (현재)");
+                labels.Add($"{current.EncodingName} (current)");
                 _encodingFactories.Add(() => current);
             }
 

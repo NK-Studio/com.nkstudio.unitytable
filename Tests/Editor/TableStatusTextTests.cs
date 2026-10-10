@@ -33,9 +33,9 @@ namespace NKStudio.TabularEditor.Tests
         [Test]
         public void Test_DescribeDelimiter_Defaults()
         {
-            Assert.AreEqual("구분 기호=[,], 따옴표=[\"](최소)", TableFormatUtility.DescribeDelimiter(new TableFileOptions()));
+            Assert.AreEqual("Delimiter=[,], Quote=[\"](Minimal)", TableFormatUtility.DescribeDelimiter(new TableFileOptions()));
             Assert.AreEqual(
-                "구분 기호=[Tab], 따옴표=[\"](최소)",
+                "Delimiter=[Tab], Quote=[\"](Minimal)",
                 TableFormatUtility.DescribeDelimiter(new TableFileOptions { Delimiter = '\t' }));
         }
 
@@ -49,7 +49,7 @@ namespace NKStudio.TabularEditor.Tests
                 QuoteMode = TableQuoteMode.Always,
             };
 
-            Assert.AreEqual("구분 기호=[;], 따옴표=[없음](항상)", TableFormatUtility.DescribeDelimiter(options));
+            Assert.AreEqual("Delimiter=[;], Quote=[None](Always)", TableFormatUtility.DescribeDelimiter(options));
         }
     }
 }

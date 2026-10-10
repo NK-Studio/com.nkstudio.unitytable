@@ -21,7 +21,7 @@ namespace NKStudio.TabularEditor.Commands
         public MoveRowsCommand(int index, int count, int delta)
         {
             if (count <= 0 || delta == 0)
-                throw new ArgumentException("옮길 행 개수와 칸 수는 0이 아니어야 합니다.");
+                throw new ArgumentException("Row count and move distance must be non-zero.");
 
             // 묶음과 그 자리를 비켜 주는 행들을 합친 구간 안에서 순서만 돌린다.
             // 예) 2~3행을 위로 1칸: 구간 1~3의 순서 [0,1,2] → [1,2,0]
@@ -45,7 +45,7 @@ namespace NKStudio.TabularEditor.Commands
         /// <summary>
         /// 작업 이름입니다.
         /// </summary>
-        public string Name => "행 이동";
+        public string Name => "Move Rows";
 
         /// <summary>
         /// 행을 옮깁니다.

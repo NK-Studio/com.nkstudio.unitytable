@@ -31,7 +31,7 @@
 .table-editor__icon--selection { background-image: url("Icons/select.png"); }
 .table-editor__icon--vertical { background-image: url("Icons/height.png"); }
 .table-editor__icon--close { background-image: url("Icons/close.png"); }
-.table-editor__icon--replace { background-image: url("Icons/find_replace.png"); }
+.table-editor__icon--replace { background-image: url("Icons/check.png"); }
 .table-editor__icon--replace-all { background-image: url("Icons/done_all.png"); }
 .table-editor__icon--info { background-image: url("Icons/info.png"); }
 

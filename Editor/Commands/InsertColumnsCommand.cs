@@ -28,7 +28,7 @@ namespace NKStudio.TabularEditor.Commands
         /// <summary>
         /// 작업 이름입니다.
         /// </summary>
-        public string Name => "열 삽입";
+        public string Name => "Insert Columns";
 
         /// <summary>
         /// 열을 삽입합니다.

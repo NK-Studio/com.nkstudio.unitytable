@@ -249,14 +249,14 @@ namespace NKStudio.TabularEditor.Window
             foreach (TableEditorThemeStyle style in Enum.GetValues(typeof(TableEditorThemeStyle)))
             {
                 menu.AddItem(
-                    new GUIContent($"테마/{TableEditorTheme.DisplayName(style)}"),
+                    new GUIContent($"Theme/{TableEditorTheme.DisplayName(style)}"),
                     TableEditorTheme.Style == style,
                     () => TableEditorTheme.Style = style);
             }
 
             // 글꼴 크기·자동 맞춤·새 CSV 형식 등 나머지 설정은 Preferences 페이지에 있다.
             menu.AddItem(
-                new GUIContent("환경 설정..."),
+                new GUIContent("Preferences..."),
                 false,
                 () => SettingsService.OpenUserPreferences(TableEditorPreferences.Path));
         }
@@ -349,7 +349,7 @@ namespace NKStudio.TabularEditor.Window
 
                 Debug.LogException(exception);
                 EndLoading();
-                ShowLoadingMessage($"파일을 불러오지 못했습니다.\n{path}");
+                ShowLoadingMessage($"Failed to load the file.\n{path}");
                 return;
             }
 
@@ -445,7 +445,7 @@ namespace NKStudio.TabularEditor.Window
 
             _loadingOverlayReveal?.Pause();
             _loadingOverlayReveal = _loadingOverlay.schedule
-                .Execute(() => ShowLoadingMessage("불러오는 중…"))
+                .Execute(() => ShowLoadingMessage("Loading…"))
                 .StartingIn(LoadingOverlayDelayMs);
         }
 
@@ -471,7 +471,7 @@ namespace NKStudio.TabularEditor.Window
             rootVisualElement.Clear();
 
             Label label = new();
-            label.text = $"UXML을 불러오지 못했습니다.\n{UxmlPath}";
+            label.text = $"Failed to load UXML.\n{UxmlPath}";
             label.AddToClassList("table-editor__empty-message");
             rootVisualElement.Add(label);
         }
@@ -571,9 +571,9 @@ namespace NKStudio.TabularEditor.Window
             if (string.IsNullOrEmpty(assetPath))
             {
                 EditorUtility.DisplayDialog(
-                    "테이블 저장",
-                    "저장할 파일 경로가 없습니다. 프로젝트 창에서 CSV 또는 TSV 파일을 열어 주세요.",
-                    "확인");
+                    "Save Table",
+                    "There is no file path to save to. Open a CSV or TSV file from the Project window.",
+                    "OK");
 
                 return;
             }
@@ -611,7 +611,7 @@ namespace NKStudio.TabularEditor.Window
             foreach (Label label in FormatLabels())
             {
                 label.AddToClassList(StatusLabelClickableClassName);
-                label.tooltip = "눌러서 파일 형식(인코딩·구분 기호·따옴표·줄 끝)을 바꿉니다.";
+                label.tooltip = "Click to change the file format (encoding, delimiter, quote, line ending).";
                 label.RegisterCallback<ClickEvent>(OnFormatLabelClicked);
             }
         }
@@ -664,10 +664,10 @@ namespace NKStudio.TabularEditor.Window
             if (_commandStack.IsDirty)
             {
                 bool reopen = EditorUtility.DisplayDialog(
-                    "다시 열기",
-                    "저장하지 않은 편집을 버리고 이 형식으로 파일을 다시 읽습니다.",
-                    "다시 열기",
-                    "취소");
+                    "Reopen",
+                    "Discard unsaved edits and re-read the file in this format.",
+                    "Reopen",
+                    "Cancel");
 
                 if (reopen == false)
                     return;
@@ -794,10 +794,10 @@ namespace NKStudio.TabularEditor.Window
                 return true;
 
             return EditorUtility.DisplayDialog(
-                "테이블 저장",
-                "파일이 에디터 외부에서 변경되었습니다. 현재 편집 내용으로 덮어쓰겠습니까?",
-                "덮어쓰기",
-                "취소");
+                "Save Table",
+                "The file was changed outside the editor. Overwrite it with your current edits?",
+                "Overwrite",
+                "Cancel");
         }
 
         private void CopySelection()
@@ -827,7 +827,7 @@ namespace NKStudio.TabularEditor.Window
             CellSelection selection = _gridView.Selection;
 
             ExecuteCommand(new SetCellsCommand(
-                "붙여넣기",
+                "Paste",
                 selection.MinRow,
                 selection.MinColumn,
                 values));
@@ -841,7 +841,7 @@ namespace NKStudio.TabularEditor.Window
             CellSelection selection = _gridView.Selection;
 
             ExecuteCommand(new SetCellsCommand(
-                "범위 비우기",
+                "Clear Range",
                 selection.MinRow,
                 selection.MinColumn,
                 TableClipboard.CreateEmptyValues(selection)));
@@ -870,13 +870,13 @@ namespace NKStudio.TabularEditor.Window
         private void UpdateDirtyState()
         {
             hasUnsavedChanges = _commandStack.IsDirty && !string.IsNullOrEmpty(assetPath);
-            saveChangesMessage = "저장되지 않은 변경 사항이 있습니다. 저장하시겠습니까?";
+            saveChangesMessage = "There are unsaved changes. Do you want to save them?";
         }
 
         private void UpdateTitle()
         {
             string fileName = string.IsNullOrEmpty(assetPath)
-                ? "새 테이블"
+                ? "New Table"
                 : Path.GetFileName(assetPath);
 
             // 저장 안 한 표시(*)는 붙이지 않는다. hasUnsavedChanges가 켜지면 Unity 탭이 스스로 '*'를 붙이므로,
@@ -892,13 +892,13 @@ namespace NKStudio.TabularEditor.Window
             CellSelection selection = _gridView.Selection;
 
             if (_sizeLabel != null)
-                _sizeLabel.text = $"{_document.RowCount} 행 × {_document.ColumnCount} 열";
+                _sizeLabel.text = $"{Count(_document.RowCount, "row")} × {Count(_document.ColumnCount, "column")}";
 
             if (_positionLabel != null)
                 _positionLabel.text = $"{selection.Anchor.Row + 1}:{selection.Anchor.Column + 1} ({DescribeSelection(selection)})";
 
             if (_stateLabel != null)
-                _stateLabel.text = _commandStack.IsDirty ? "저장되지 않음" : string.Empty;
+                _stateLabel.text = _commandStack.IsDirty ? "Unsaved" : string.Empty;
 
             if (_encodingLabel != null)
                 _encodingLabel.text = TableFormatUtility.DescribeEncoding(_document.FileOptions?.Encoding);
@@ -910,7 +910,7 @@ namespace NKStudio.TabularEditor.Window
                 _delimiterLabel.text = TableFormatUtility.DescribeDelimiter(_document.FileOptions);
         }
 
-        // 셀 하나면 그 셀의 글자 수, 범위면 셀 개수를 보여 준다(예: "4자", "54 셀").
+        // 셀 하나면 그 셀의 글자 수, 범위면 셀 개수를 보여 준다(예: "4 chars", "54 cells").
         // 행·열 전체를 고른 경우에는 Delete 키가 무엇을 지울지 미리 알 수 있도록 덧붙인다.
         private string DescribeSelection(CellSelection selection)
         {
@@ -918,17 +918,23 @@ namespace NKStudio.TabularEditor.Window
             int columns = selection.MaxColumn - selection.MinColumn + 1;
 
             if (selection.Kind == CellSelectionKind.Rows)
-                return $"행 {rows}개 · Delete로 삭제";
+                return $"{Count(rows, "row")} · Delete to remove";
 
             if (selection.Kind == CellSelectionKind.Columns)
-                return $"열 {columns}개 · Delete로 삭제";
+                return $"{Count(columns, "column")} · Delete to remove";
 
             if (selection.IsSingleCell == false)
-                return $"{rows * columns} 셀";
+                return Count(rows * columns, "cell");
 
             // 한글·이모지 결합 문자를 한 글자로 센다.
             string value = _document.GetCell(selection.Anchor.Row, selection.Anchor.Column);
-            return $"{new StringInfo(value).LengthInTextElements}자";
+            return Count(new StringInfo(value).LengthInTextElements, "char");
+        }
+
+        // 예: (1, "row") → "1 row", (3, "row") → "3 rows"
+        private static string Count(int count, string noun)
+        {
+            return count == 1 ? $"1 {noun}" : $"{count} {noun}s";
         }
     }
 }

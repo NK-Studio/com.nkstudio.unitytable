@@ -27,7 +27,7 @@ namespace NKStudio.TabularEditor.Commands
         /// <summary>
         /// 작업 이름입니다.
         /// </summary>
-        public string Name => "행 삭제";
+        public string Name => "Delete Rows";
 
         /// <summary>
         /// 행을 제거하고 제거된 값을 기록합니다.

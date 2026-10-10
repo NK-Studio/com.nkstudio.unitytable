@@ -170,7 +170,7 @@ namespace NKStudio.TabularEditor.Data
         /// <returns>기록했으면 true입니다. 다른 도구의 userData가 있어 기록하지 않았으면 false입니다.</returns>
         public static bool SaveHeaderRowCount(string assetPath, int headerRowCount)
         {
-            return WriteUserData(assetPath, "헤더 행 설정", userData =>
+            return WriteUserData(assetPath, "header rows", userData =>
             {
                 Settings settings = Parse(userData);
                 settings.headerRowCount = Math.Max(0, headerRowCount);
@@ -184,7 +184,7 @@ namespace NKStudio.TabularEditor.Data
         /// <returns>기록했으면 true입니다. 다른 도구의 userData가 있어 기록하지 않았으면 false입니다.</returns>
         public static bool SaveFileFormat(string assetPath, TableFileFormatOverride format)
         {
-            return WriteUserData(assetPath, "파일 형식", userData => FormatFileFormat(userData, format));
+            return WriteUserData(assetPath, "file format", userData => FormatFileFormat(userData, format));
         }
 
         // 우리 형식이 아니거나 읽을 수 없으면 기본값이다.
@@ -256,7 +256,7 @@ namespace NKStudio.TabularEditor.Data
             if (IsOwnedOrEmpty(importer.userData) == false)
             {
                 Debug.LogWarning(
-                    $"[Tabular Editor] {assetPath}.meta의 userData를 다른 도구가 쓰고 있어 {settingName}을 저장하지 않았습니다.");
+                    $"[Tabular Editor] Did not save {settingName}: the userData in {assetPath}.meta is used by another tool.");
                 return false;
             }
 

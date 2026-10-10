@@ -297,7 +297,7 @@ namespace NKStudio.TabularEditor.Data
                 return;
 
             if (firstRow < 0 || firstRow + order.Count > _rows.Count)
-                throw new ArgumentOutOfRangeException(nameof(order), "정렬할 범위가 문서 행 범위를 벗어났습니다.");
+                throw new ArgumentOutOfRangeException(nameof(order), "The range to reorder is outside the document rows.");
 
             // 순열이 아니면 행이 중복되거나 사라지므로, 문서를 건드리기 전에 막는다.
             bool[] used = new bool[order.Count];
@@ -308,7 +308,7 @@ namespace NKStudio.TabularEditor.Data
                 int source = order[index];
 
                 if (source < 0 || source >= order.Count || used[source])
-                    throw new ArgumentException("행 순서가 순열이 아닙니다.", nameof(order));
+                    throw new ArgumentException("The row order is not a permutation.", nameof(order));
 
                 used[source] = true;
                 reordered[index] = _rows[firstRow + source];

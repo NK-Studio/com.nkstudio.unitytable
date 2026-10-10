@@ -8,7 +8,7 @@
             <uie:ToolbarButton
                 name="table-editor__search-button"
                 class="table-editor__toolbar-icon-button"
-                tooltip="셀 내용을 검색합니다. (Ctrl+F)">
+                tooltip="Search cell contents (Ctrl+F)">
                 <ui:VisualElement class="table-editor__icon table-editor__icon--search" />
             </uie:ToolbarButton>
         </uie:Toolbar>
@@ -20,7 +20,7 @@
             <ui:Button
                 name="table-editor__search-expand-button"
                 class="table-editor__icon-button table-editor__search-expand-button"
-                tooltip="바꾸기 열기/닫기">
+                tooltip="Toggle replace">
                 <ui:VisualElement class="table-editor__icon table-editor__icon--chevron" />
             </ui:Button>
 
@@ -32,19 +32,19 @@
                             <ui:Button
                                 name="table-editor__search-case-toggle"
                                 class="table-editor__icon-button table-editor__option-toggle"
-                                tooltip="대소문자 구분">
+                                tooltip="Match case">
                                 <ui:VisualElement class="table-editor__icon table-editor__icon--match-case" />
                             </ui:Button>
                             <ui:Button
                                 name="table-editor__search-regex-toggle"
                                 class="table-editor__icon-button table-editor__option-toggle"
-                                tooltip="정규식 사용">
+                                tooltip="Use regular expression">
                                 <ui:VisualElement class="table-editor__icon table-editor__icon--regex" />
                             </ui:Button>
                             <ui:Button
                                 name="table-editor__search-word-toggle"
                                 class="table-editor__icon-button table-editor__option-toggle"
-                                tooltip="단어 단위로">
+                                tooltip="Match whole word">
                                 <ui:VisualElement class="table-editor__icon table-editor__icon--match-word" />
                             </ui:Button>
                         </ui:VisualElement>
@@ -53,25 +53,25 @@
                     <ui:Button
                         name="table-editor__search-next-button"
                         class="table-editor__icon-button"
-                        tooltip="다음 결과 (Enter, F3)">
+                        tooltip="Next match (Enter, F3)">
                         <ui:VisualElement class="table-editor__icon table-editor__icon--next" />
                     </ui:Button>
                     <ui:Button
                         name="table-editor__search-previous-button"
                         class="table-editor__icon-button"
-                        tooltip="이전 결과 (Shift+Enter, Shift+F3)">
+                        tooltip="Previous match (Shift+Enter, Shift+F3)">
                         <ui:VisualElement class="table-editor__icon table-editor__icon--previous" />
                     </ui:Button>
                     <ui:Button
                         name="table-editor__search-selection-toggle"
                         class="table-editor__icon-button table-editor__option-toggle"
-                        tooltip="선택 영역에서 찾기">
+                        tooltip="Find in selection">
                         <ui:VisualElement class="table-editor__icon table-editor__icon--selection" />
                     </ui:Button>
                     <ui:Button
                         name="table-editor__search-vertical-toggle"
                         class="table-editor__icon-button table-editor__option-toggle"
-                        tooltip="수직 방향으로 찾기 (왼쪽 열부터 위→아래)">
+                        tooltip="Search vertically (column by column, top to bottom)">
                         <ui:VisualElement class="table-editor__icon table-editor__icon--vertical" />
                     </ui:Button>
 
@@ -81,7 +81,7 @@
                     <ui:Button
                         name="table-editor__search-close-button"
                         class="table-editor__icon-button"
-                        tooltip="닫기 (Esc)">
+                        tooltip="Close (Esc)">
                         <ui:VisualElement class="table-editor__icon table-editor__icon--close" />
                     </ui:Button>
                 </ui:VisualElement>
@@ -96,20 +96,20 @@
                                 name="table-editor__replace-preserve-case-toggle"
                                 class="table-editor__icon-button table-editor__option-toggle table-editor__text-toggle"
                                 text="AB"
-                                tooltip="대소문자 유지" />
+                                tooltip="Preserve case" />
                         </ui:VisualElement>
                     </ui:VisualElement>
 
                     <ui:Button
                         name="table-editor__replace-button"
                         class="table-editor__icon-button"
-                        tooltip="바꾸기 (Enter)">
+                        tooltip="Replace (Enter)">
                         <ui:VisualElement class="table-editor__icon table-editor__icon--replace" />
                     </ui:Button>
                     <ui:Button
                         name="table-editor__replace-all-button"
                         class="table-editor__icon-button"
-                        tooltip="모두 바꾸기 (Ctrl/Cmd+Enter)">
+                        tooltip="Replace all (Ctrl/Cmd+Enter)">
                         <ui:VisualElement class="table-editor__icon table-editor__icon--replace-all" />
                     </ui:Button>
                 </ui:VisualElement>
@@ -123,18 +123,18 @@
             <ui:VisualElement class="table-editor__icon table-editor__icon--info" />
             <ui:Label
                 class="table-editor__external-change-text"
-                text="파일이 에디터 밖에서 변경되었습니다. 저장하지 않은 편집이 있습니다." />
+                text="The file was changed outside the editor. You have unsaved edits." />
             <ui:VisualElement class="table-editor__toolbar-spacer" />
             <ui:Button
                 name="table-editor__external-change-reload-button"
                 class="table-editor__bar-button"
-                text="다시 불러오기"
-                tooltip="저장하지 않은 편집을 버리고 바뀐 파일 내용을 읽습니다." />
+                text="Reload"
+                tooltip="Discard unsaved edits and read the changed file." />
             <ui:Button
                 name="table-editor__external-change-dismiss-button"
                 class="table-editor__bar-button"
-                text="무시"
-                tooltip="지금 편집을 유지합니다. 저장할 때 덮어쓸지 다시 묻습니다." />
+                text="Ignore"
+                tooltip="Keep your edits. You will be asked whether to overwrite when you save." />
         </ui:VisualElement>
 
         <ui:VisualElement class="table-editor__body">
@@ -145,14 +145,14 @@
                 name="table-editor__add-column-button"
                 class="table-editor__add-button table-editor__add-column-button"
                 text="+"
-                tooltip="맨 오른쪽에 열을 추가합니다." />
+                tooltip="Add a column at the far right." />
         </ui:VisualElement>
 
         <ui:Button
             name="table-editor__add-row-button"
             class="table-editor__add-button table-editor__add-row-button"
             text="+"
-            tooltip="맨 아래에 행을 추가합니다." />
+            tooltip="Add a row at the bottom." />
 
         <!-- 상태 표시줄: 왼쪽은 표 크기·활성 셀, 오른쪽은 파일 형식(인코딩·개행·구분 기호). -->
         <ui:VisualElement name="table-editor__status-bar" class="table-editor__status-bar">
@@ -172,17 +172,17 @@
             <ui:Label
                 name="table-editor__status-encoding"
                 class="table-editor__status-label"
-                tooltip="파일 인코딩. 저장할 때 그대로 유지합니다."
+                tooltip="File encoding. Kept as is when saving."
                 text="" />
             <ui:Label
                 name="table-editor__status-newline"
                 class="table-editor__status-label"
-                tooltip="개행 문자. 저장할 때 그대로 유지합니다."
+                tooltip="Line ending. Kept as is when saving."
                 text="" />
             <ui:Label
                 name="table-editor__status-delimiter"
                 class="table-editor__status-label"
-                tooltip="구분 기호와 따옴표 규칙. 따옴표는 구분 기호·따옴표·줄바꿈이 든 셀에만 붙입니다."
+                tooltip="Delimiter and quoting rule. Quotes are added only to cells that contain the delimiter, a quote or a line break."
                 text="" />
         </ui:VisualElement>
     </ui:VisualElement>

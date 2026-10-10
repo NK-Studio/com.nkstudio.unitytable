@@ -7,27 +7,27 @@ namespace NKStudio.TabularEditor.Window
     /// </summary>
     internal static class TableFormatChoices
     {
-        public const string OtherLabel = "기타...";
+        public const string OtherLabel = "Other...";
 
         public static readonly (string Label, char Value)[] Delimiters =
         {
-            ("쉼표 ( , )", ','),
-            ("탭", '\t'),
-            ("세미콜론 ( ; )", ';'),
-            ("콜론 ( : )", ':'),
-            ("파이프 ( | )", '|'),
-            ("공백", ' '),
+            ("Comma ( , )", ','),
+            ("Tab", '\t'),
+            ("Semicolon ( ; )", ';'),
+            ("Colon ( : )", ':'),
+            ("Pipe ( | )", '|'),
+            ("Space", ' '),
         };
 
         public static readonly (string Label, char Value)[] Quotes =
         {
-            ("없음", TableFileOptions.NoQuote),
+            ("None", TableFileOptions.NoQuote),
             ("\"", '"'),
             ("'", '\''),
         };
 
         // TableQuoteMode 순서(Always, Minimal, Never)와 같다.
-        public static readonly string[] QuoteModes = { "항상", "최소", "사용 안 함" };
+        public static readonly string[] QuoteModes = { "Always", "Minimal", "Never" };
 
         public static readonly (string Label, string Value)[] NewLines =
         {

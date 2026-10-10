@@ -45,85 +45,85 @@ namespace NKStudio.TabularEditor.Window
 
                 EditorGUILayout.Space(16);
 
-                if (GUILayout.Button("기본값으로 되돌리기", GUILayout.Width(160)))
+                if (GUILayout.Button("Reset to Defaults", GUILayout.Width(160)))
                     TableEditorSettings.ResetToDefaults();
             }
         }
 
         private static void DrawDisplaySection()
         {
-            Section("표시");
+            Section("Display");
 
             string[] themes = Enum.GetValues(typeof(TableEditorThemeStyle))
                 .Cast<TableEditorThemeStyle>()
                 .Select(TableEditorTheme.DisplayName)
                 .ToArray();
 
-            TableEditorTheme.Style = (TableEditorThemeStyle)EditorGUILayout.Popup("테마", (int)TableEditorTheme.Style, themes);
-            Description("창 오른쪽 위 ⋮ 메뉴에서도 바꿀 수 있습니다. 다크/라이트는 Unity 에디터 스킨을 따릅니다.");
+            TableEditorTheme.Style = (TableEditorThemeStyle)EditorGUILayout.Popup("Theme", (int)TableEditorTheme.Style, themes);
+            Description("Also available from the ⋮ menu at the top right of the window. Dark/light follows the Unity Editor skin.");
 
             TableEditorSettings.FontSize = EditorGUILayout.IntSlider(
-                "글꼴 크기",
+                "Font Size",
                 TableEditorSettings.FontSize,
                 TableEditorSettings.MinFontSize,
                 TableEditorSettings.MaxFontSize);
-            Description("표의 글꼴 크기입니다. 행 높이와 행 번호 폭도 함께 바뀝니다.");
+            Description("Font size of the table. Row height and row number width scale with it.");
 
-            TableEditorSettings.MouseWheelZoom = EditorGUILayout.Toggle("마우스 휠 줌", TableEditorSettings.MouseWheelZoom);
-            Description("Ctrl(macOS에서는 Cmd) + 마우스 휠로 글꼴 크기를 키우고 줄입니다.");
+            TableEditorSettings.MouseWheelZoom = EditorGUILayout.Toggle("Mouse Wheel Zoom", TableEditorSettings.MouseWheelZoom);
+            Description("Ctrl (Cmd on macOS) + mouse wheel increases or decreases the font size.");
         }
 
         private static void DrawAutoFitSection()
         {
-            Section("열 너비 자동 맞춤");
+            Section("Column Auto-Fit");
 
-            TableEditorSettings.AutoFitOnOpen = EditorGUILayout.Toggle("파일을 열 때", TableEditorSettings.AutoFitOnOpen);
-            Description("파일을 열 때 값이 있는 열의 너비를 내용에 맞춥니다. 끄면 모든 열이 기본 너비로 시작합니다.");
+            TableEditorSettings.AutoFitOnOpen = EditorGUILayout.Toggle("On File Open", TableEditorSettings.AutoFitOnOpen);
+            Description("Fits columns that have values to their content when a file opens. When off, all columns start at the default width.");
 
-            TableEditorSettings.AutoFitOnEdit = EditorGUILayout.Toggle("셀을 편집할 때", TableEditorSettings.AutoFitOnEdit);
-            Description("셀 값을 바꿨을 때 그 열이 내용보다 좁으면 넓힙니다. 직접 넓혀 둔 열을 줄이지는 않습니다.");
+            TableEditorSettings.AutoFitOnEdit = EditorGUILayout.Toggle("On Cell Edit", TableEditorSettings.AutoFitOnEdit);
+            Description("Widens a column when an edited value no longer fits. Never shrinks a column you widened yourself.");
 
-            TableEditorSettings.AutoFitScanRows = EditorGUILayout.DelayedIntField("스캔할 행 수", TableEditorSettings.AutoFitScanRows);
-            Description("너비를 정할 때 위에서부터 살펴볼 행 수입니다. 헤더 행은 항상 살펴봅니다.");
+            TableEditorSettings.AutoFitScanRows = EditorGUILayout.DelayedIntField("Rows to Scan", TableEditorSettings.AutoFitScanRows);
+            Description("Number of rows, from the top, examined to decide a width. Header rows are always examined.");
 
             TableEditorSettings.AutoFitMaxWidthPercent = EditorGUILayout.IntSlider(
-                "최대 너비 (창 너비 %)",
+                "Max Width (% of Window)",
                 TableEditorSettings.AutoFitMaxWidthPercent,
                 1,
                 100);
-            Description("자동 맞춤 열이 넓어질 수 있는 최대 너비입니다. 넘치는 값은 …로 잘립니다. 경계를 더블클릭해 맞출 때도 같습니다.");
+            Description("Maximum width an auto-fitted column can grow to. Longer values are truncated with …. Also applies when double-clicking a column border.");
         }
 
         private static void DrawNewTableSection()
         {
-            Section("새 CSV 파일");
-            Description("Assets > Create > Scripting > CSV File로 만드는 파일의 크기와 형식입니다.");
+            Section("New CSV File");
+            Description("Size and format of files created with Assets > Create > Scripting > CSV File.");
 
-            TableEditorSettings.NewTableRows = EditorGUILayout.DelayedIntField("행 수", TableEditorSettings.NewTableRows);
-            TableEditorSettings.NewTableColumns = EditorGUILayout.DelayedIntField("열 수", TableEditorSettings.NewTableColumns);
+            TableEditorSettings.NewTableRows = EditorGUILayout.DelayedIntField("Rows", TableEditorSettings.NewTableRows);
+            TableEditorSettings.NewTableColumns = EditorGUILayout.DelayedIntField("Columns", TableEditorSettings.NewTableColumns);
 
             string[] encodings = TableEncodings.Entries.Select(entry => entry.Label).ToArray();
-            TableEditorSettings.NewTableEncodingIndex = EditorGUILayout.Popup("인코딩", TableEditorSettings.NewTableEncodingIndex, encodings);
+            TableEditorSettings.NewTableEncodingIndex = EditorGUILayout.Popup("Encoding", TableEditorSettings.NewTableEncodingIndex, encodings);
 
-            TableEditorSettings.NewTableDelimiter = CharPopup("구분 기호", TableFormatChoices.Delimiters, TableEditorSettings.NewTableDelimiter);
-            TableEditorSettings.NewTableQuote = CharPopup("따옴표", TableFormatChoices.Quotes, TableEditorSettings.NewTableQuote);
+            TableEditorSettings.NewTableDelimiter = CharPopup("Delimiter", TableFormatChoices.Delimiters, TableEditorSettings.NewTableDelimiter);
+            TableEditorSettings.NewTableQuote = CharPopup("Quote", TableFormatChoices.Quotes, TableEditorSettings.NewTableQuote);
 
             TableEditorSettings.NewTableQuoteMode = (TableQuoteMode)EditorGUILayout.Popup(
-                "따옴표 모드",
+                "Quote Mode",
                 (int)TableEditorSettings.NewTableQuoteMode,
                 TableFormatChoices.QuoteModes);
 
             int newLine = EditorGUILayout.Popup(
-                "줄 끝",
+                "Line Ending",
                 TableEditorSettings.NewTableUsesCrlf ? 1 : 0,
                 TableFormatChoices.NewLines.Select(choice => choice.Label).ToArray());
             TableEditorSettings.NewTableUsesCrlf = newLine == 1;
 
             TableEditorSettings.NewTableEndsWithNewLine = EditorGUILayout.Toggle(
-                "마지막 줄 바꿈 추가",
+                "Final Newline",
                 TableEditorSettings.NewTableEndsWithNewLine);
 
-            Description("기본(UTF-8·쉼표·큰따옴표·최소)과 다르게 만든 파일은 그 형식이 .meta에 기록되어 열 때 그대로 읽힙니다.");
+            Description("Files created with a format other than the default (UTF-8, comma, double quote, minimal) record it in their .meta so they are read the same way when opened.");
         }
 
         // '기타'를 골랐지만 아직 글자를 입력하지 않은 항목이다. IMGUI는 프레임 사이에 상태가 없어,

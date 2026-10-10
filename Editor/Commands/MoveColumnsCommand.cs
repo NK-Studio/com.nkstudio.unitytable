@@ -22,7 +22,7 @@ namespace NKStudio.TabularEditor.Commands
         public MoveColumnsCommand(int index, int count, int delta)
         {
             if (count <= 0 || delta == 0)
-                throw new ArgumentException("옮길 열 개수와 칸 수는 0이 아니어야 합니다.");
+                throw new ArgumentException("Column count and move distance must be non-zero.");
 
             _index = index;
             _count = count;
@@ -32,7 +32,7 @@ namespace NKStudio.TabularEditor.Commands
         /// <summary>
         /// 작업 이름입니다.
         /// </summary>
-        public string Name => "열 이동";
+        public string Name => "Move Columns";
 
         /// <summary>
         /// 열을 옮깁니다.

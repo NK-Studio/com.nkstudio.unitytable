@@ -49,7 +49,7 @@ namespace NKStudio.TabularEditor.Data
             }
             catch (ArgumentException)
             {
-                ErrorMessage = "잘못된 정규식";
+                ErrorMessage = "Invalid regex";
             }
         }
 
