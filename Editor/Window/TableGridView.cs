@@ -43,6 +43,7 @@ namespace NKStudio.TabularEditor.Window
         private const string SelectionLayerClassName = "table-editor__selection-layer";
         private const string SelectionBoxClassName = "table-editor__selection-box";
         private const string SelectionHandleClassName = "table-editor__selection-handle";
+        private const string FillPreviewClassName = "table-editor__fill-preview";
         private const string FrozenPaneClassName = "table-editor__frozen-pane";
         private const string FrozenContentClassName = "table-editor__frozen-content";
         private const string HeaderRowClassName = "table-editor__row--header";
@@ -60,6 +61,11 @@ namespace NKStudio.TabularEditor.Window
         // 선택 테두리 오른쪽 아래 동그란 핸들이 행 아래로 삐져나오는 길이(반지름 6 + 테두리 절반 1)다. USS와 맞춘다.
         // 선택 레이어를 이만큼 아래로 더 열어 두지 않으면 마지막 행·고정 행 맨 아래에서 핸들이 반쯤 잘린다.
         private const float SelectionHandleOverflow = 7f;
+
+        // 채우기 핸들을 표 밖으로 끌면 이 주기(ms)마다 스크롤한다. 한 번에 움직이는 양은 밖으로 나간 거리에 비례하고 아래 범위로 자른다.
+        private const long FillAutoScrollIntervalMs = 30;
+        private const float FillAutoScrollMinStep = 4f;
+        private const float FillAutoScrollMaxStep = 40f;
         private const string MeasureWrapClassName = "table-editor__measure--wrap";
         private const string EditFieldWrapClassName = "table-editor__edit-field--wrap";
         private const string EditFieldHeaderClassName = "table-editor__edit-field--header";
@@ -88,6 +94,12 @@ namespace NKStudio.TabularEditor.Window
         private readonly VisualElement _header;
         private readonly HashSet<CellCoord> _pendingAutoFitCells = new();
         private readonly IVisualElementScheduledItem _autoFitUpdate;
+        private readonly IVisualElementScheduledItem _fillAutoScroll;
+        private readonly VisualElement _fillPreviewLayer;
+        private readonly VisualElement _fillPreviewBox;
+        private readonly VisualElement _frozenFillPreviewLayer;
+        private readonly VisualElement _frozenFillPreviewBox;
+        private readonly List<VisualElement> _fillHandles = new();
 
         private TableGridMetrics _metrics = TableGridMetrics.FromFontSize(TableEditorSettings.FontSize);
 
@@ -129,6 +141,9 @@ namespace NKStudio.TabularEditor.Window
         private float _resizeStartWidth;
         private HashSet<CellCoord> _matches;
         private DragSelectMode _dragSelectMode;
+        private bool _isFillDragging;
+        private FillTarget? _fillTarget;
+        private Vector2 _fillPointerPosition;
         private bool _isEditing;
         private bool _isTypingEntry;
         private bool _suppressEditCommit;
@@ -188,6 +203,12 @@ namespace NKStudio.TabularEditor.Window
             _frozenSelectionLayer = CreateSelectionLayer(out _frozenSelectionBox);
             _selectionLayer = CreateSelectionLayer(out _selectionBox);
 
+            // 채우기 핸들을 끄는 동안 늘어날 범위를 보여 주는 상자다. 선택 테두리처럼 구역마다 하나씩 둔다.
+            _frozenFillPreviewLayer = CreateFillPreviewLayer(out _frozenFillPreviewBox);
+            _fillPreviewLayer = CreateFillPreviewLayer(out _fillPreviewBox);
+            RegisterFillHandle(_frozenSelectionBox);
+            RegisterFillHandle(_selectionBox);
+
             _editField = new TextField();
             _editField.AddToClassList("table-editor__edit-field");
             _editField.isDelayed = false;
@@ -243,6 +264,8 @@ namespace NKStudio.TabularEditor.Window
 
             // 붙여넣기·모두 바꾸기처럼 셀이 한꺼번에 바뀌어도 한 번만 넓힌다.
             _autoFitUpdate = _listView.schedule.Execute(FitEditedCells);
+            _fillAutoScroll = _listView.schedule.Execute(OnFillAutoScroll).Every(FillAutoScrollIntervalMs);
+            _fillAutoScroll.Pause();
             _autoFitUpdate.Pause();
 
             ApplyMetricsToElements();
@@ -346,6 +369,149 @@ namespace NKStudio.TabularEditor.Window
             _scrollView.scrollOffset = next;
         }
 
+        // 채우기 핸들: 선택 범위 오른쪽 아래의 동그란 핸들을 끌어 늘린 칸을 채운다. 규칙은 FillDrag·FillSeries.
+        // 놓을 때 Alt/Option을 누르고 있으면 이어 가기와 복사를 바꾼다. 결과는 Undo 한 번으로 되돌아간다.
+        private void RegisterFillHandle(VisualElement box)
+        {
+            VisualElement handle = box.Q(className: SelectionHandleClassName);
+            handle.RegisterCallback<PointerDownEvent>(OnFillHandlePointerDown);
+            handle.RegisterCallback<PointerMoveEvent>(OnFillHandlePointerMove);
+            handle.RegisterCallback<PointerUpEvent>(OnFillHandlePointerUp);
+            handle.RegisterCallback<PointerCaptureOutEvent>(OnFillHandleCaptureOut);
+            _fillHandles.Add(handle);
+        }
+
+        private void OnFillHandlePointerDown(PointerDownEvent evt)
+        {
+            if (evt.button != 0 || _document == null || evt.currentTarget is not VisualElement handle)
+                return;
+
+            // 셀을 누를 때처럼 숨은 편집칸의 포커스를 지킨다.
+            evt.StopPropagation();
+            _listView.focusController?.IgnoreEvent(evt);
+
+            CommitEdit();
+            _dragSelectMode = DragSelectMode.None;
+            _isFillDragging = true;
+            _fillTarget = null;
+            _fillPointerPosition = evt.position;
+            handle.CapturePointer(evt.pointerId);
+            _fillAutoScroll.Resume();
+        }
+
+        private void OnFillHandlePointerMove(PointerMoveEvent evt)
+        {
+            if (_isFillDragging == false)
+                return;
+
+            _fillPointerPosition = evt.position;
+            UpdateFillTarget();
+        }
+
+        private void OnFillHandlePointerUp(PointerUpEvent evt)
+        {
+            if (_isFillDragging == false || evt.currentTarget is not VisualElement handle)
+                return;
+
+            // 캡처를 풀면 CaptureOut이 바로 와서 취소로 처리하므로, 먼저 끝낸 다음 푼다.
+            FinishFill(true, evt.altKey);
+            handle.ReleasePointer(evt.pointerId);
+        }
+
+        private void OnFillHandleCaptureOut(PointerCaptureOutEvent evt)
+        {
+            if (_isFillDragging)
+                FinishFill(false, false);
+        }
+
+        private void UpdateFillTarget()
+        {
+            if (TryGetCellAt(_fillPointerPosition, out CellCoord pointer) == false
+                && TryGetNearestCellAt(_fillPointerPosition, out pointer) == false)
+            {
+                return;
+            }
+
+            _fillTarget = FillDrag.TryGetTarget(
+                Selection.MinRow,
+                Selection.MinColumn,
+                Selection.MaxRow,
+                Selection.MaxColumn,
+                pointer,
+                HeaderRowCount,
+                out FillTarget target)
+                ? target
+                : null;
+
+            UpdateSelectionBoxPlacement();
+        }
+
+        private void FinishFill(bool apply, bool toggle)
+        {
+            _isFillDragging = false;
+            _fillAutoScroll.Pause();
+
+            FillTarget? fill = _fillTarget;
+            _fillTarget = null;
+            UpdateSelectionBoxPlacement();
+
+            if (apply == false || fill is not FillTarget target || _document == null)
+                return;
+
+            string[][] values = FillDrag.BuildValues(
+                _document,
+                Selection.MinRow,
+                Selection.MinColumn,
+                Selection.MaxRow,
+                Selection.MaxColumn,
+                target,
+                toggle,
+                out int originRow,
+                out int originColumn);
+
+            CommandRequested?.Invoke(new SetCellsCommand(Localization.Get("undo.fill"), originRow, originColumn, values));
+            Selection.SetRange(target.FirstRow, target.FirstColumn, target.LastRow, target.LastColumn);
+            FocusGrid();
+        }
+
+        // 포인터가 표 영역 밖에 있으면 그쪽으로 스크롤하고, 그만큼 늘어날 범위도 다시 잡는다.
+        private void OnFillAutoScroll()
+        {
+            if (_isFillDragging == false)
+                return;
+
+            Rect view = _scrollView.contentViewport.worldBound;
+            Vector2 pointer = _fillPointerPosition;
+
+            float dataLeft = view.xMin + RowNumberColumnWidth;
+            float dx = pointer.x > view.xMax ? pointer.x - view.xMax : pointer.x < dataLeft ? pointer.x - dataLeft : 0f;
+            float dy = pointer.y > view.yMax ? pointer.y - view.yMax : pointer.y < view.yMin ? pointer.y - view.yMin : 0f;
+
+            if (dx == 0f && dy == 0f)
+                return;
+
+            Vector2 current = _scrollView.scrollOffset;
+            Vector2 next = new(
+                Mathf.Clamp(current.x + AutoScrollStep(dx), 0f, Mathf.Max(0f, _scrollView.horizontalScroller.highValue)),
+                Mathf.Clamp(current.y + AutoScrollStep(dy), 0f, Mathf.Max(0f, _scrollView.verticalScroller.highValue)));
+
+            if (next == current)
+                return;
+
+            _scrollView.scrollOffset = next;
+
+            // 스크롤 직후에는 새로 보인 행의 셀이 아직 바인딩되지 않았을 수 있어 다음 틱에 범위를 잡는다.
+            _listView.schedule.Execute(UpdateFillTarget);
+        }
+
+        private static float AutoScrollStep(float overflow)
+        {
+            if (overflow == 0f)
+                return 0f;
+
+            return Mathf.Sign(overflow) * Mathf.Clamp(Mathf.Abs(overflow) * 0.5f, FillAutoScrollMinStep, FillAutoScrollMaxStep);
+        }
+
         private VisualElement CreateSelectionLayer(out VisualElement box)
         {
             VisualElement layer = new();
@@ -360,6 +526,23 @@ namespace NKStudio.TabularEditor.Window
             VisualElement handle = new();
             handle.AddToClassList(SelectionHandleClassName);
             box.Add(handle);
+
+            layer.Add(box);
+            _container.Add(layer);
+
+            return layer;
+        }
+
+        private VisualElement CreateFillPreviewLayer(out VisualElement box)
+        {
+            VisualElement layer = new();
+            layer.AddToClassList(SelectionLayerClassName);
+            layer.pickingMode = PickingMode.Ignore;
+            layer.style.display = DisplayStyle.None;
+
+            box = new VisualElement();
+            box.AddToClassList(FillPreviewClassName);
+            box.pickingMode = PickingMode.Ignore;
 
             layer.Add(box);
             _container.Add(layer);
@@ -991,6 +1174,7 @@ namespace NKStudio.TabularEditor.Window
             _container.UnregisterCallback<PointerUpEvent>(OnGridPointerUp, TrickleDown.TrickleDown);
             _container.UnregisterCallback<WheelEvent>(OnGridWheel, TrickleDown.TrickleDown);
             _autoFitUpdate.Pause();
+            _fillAutoScroll.Pause();
             _header.UnregisterCallback<PointerDownEvent>(OnHeaderPointerDown, TrickleDown.TrickleDown);
             _header.RemoveManipulator(_headerMenuManipulator);
             _scrollView.horizontalScroller.valueChanged -= OnHorizontalScrollChanged;
@@ -1075,6 +1259,13 @@ namespace NKStudio.TabularEditor.Window
         {
             if (evt.button != 0)
                 return;
+
+            // 채우기 핸들은 자기 콜백이 끌기를 맡는다. 여기서 셀 드래그 선택을 걸면 핸들을 끄는 동안 선택이 함께 늘어난다.
+            if (evt.target is VisualElement pressed && _fillHandles.Contains(pressed))
+            {
+                _dragSelectMode = DragSelectMode.None;
+                return;
+            }
 
             // 셀 위에서 눌렀으면 드래그로 범위를 넓힐 준비를 한다.
             // 더블클릭은 편집 진입이므로 드래그를 걸지 않는다. 걸어두면 손떨림 한 번에 편집이 닫힌다.
@@ -2329,6 +2520,8 @@ namespace NKStudio.TabularEditor.Window
             {
                 _frozenSelectionLayer.style.display = DisplayStyle.None;
                 _selectionLayer.style.display = DisplayStyle.None;
+                _frozenFillPreviewLayer.style.display = DisplayStyle.None;
+                _fillPreviewLayer.style.display = DisplayStyle.None;
                 return;
             }
 
@@ -2341,6 +2534,8 @@ namespace NKStudio.TabularEditor.Window
                 _frozenPane,
                 Selection.MinRow,
                 Math.Min(Selection.MaxRow, lastFrozenRow),
+                Selection.MinColumn,
+                Selection.MaxColumn,
                 0,
                 0f,
                 _frozenPane.layout.height + SelectionHandleOverflow,
@@ -2359,10 +2554,51 @@ namespace NKStudio.TabularEditor.Window
                 _scrollView.contentViewport,
                 Math.Max(Selection.MinRow, HeaderRowCount),
                 Selection.MaxRow,
+                Selection.MinColumn,
+                Selection.MaxColumn,
                 HeaderRowCount,
                 _scrollView.scrollOffset.y,
                 bodyLayerHeight,
                 isHandleInFrozenPane == false);
+
+            PlaceFillPreview(lastFrozenRow, bodyLayerHeight);
+        }
+
+        // 끄는 동안에만 원본과 늘어날 칸을 합친 범위를 보여 준다.
+        private void PlaceFillPreview(int lastFrozenRow, float bodyLayerHeight)
+        {
+            if (_fillTarget is not FillTarget fill)
+            {
+                _frozenFillPreviewLayer.style.display = DisplayStyle.None;
+                _fillPreviewLayer.style.display = DisplayStyle.None;
+                return;
+            }
+
+            PlaceSelectionSegment(
+                _frozenFillPreviewLayer,
+                _frozenFillPreviewBox,
+                _frozenPane,
+                fill.FirstRow,
+                Math.Min(fill.LastRow, lastFrozenRow),
+                fill.FirstColumn,
+                fill.LastColumn,
+                0,
+                0f,
+                _frozenPane.layout.height,
+                false);
+
+            PlaceSelectionSegment(
+                _fillPreviewLayer,
+                _fillPreviewBox,
+                _scrollView.contentViewport,
+                Math.Max(fill.FirstRow, HeaderRowCount),
+                fill.LastRow,
+                fill.FirstColumn,
+                fill.LastColumn,
+                HeaderRowCount,
+                _scrollView.scrollOffset.y,
+                bodyLayerHeight,
+                false);
         }
 
         // area 안에 firstRow~lastRow 구간의 테두리를 놓는다. 레이어는 area의 데이터 영역(고정 행 번호 열 오른쪽)만 덮고
@@ -2373,6 +2609,8 @@ namespace NKStudio.TabularEditor.Window
             VisualElement area,
             int firstRow,
             int lastRow,
+            int firstColumnIndex,
+            int lastColumnIndex,
             int areaFirstRow,
             float scrollY,
             float layerHeight,
@@ -2397,8 +2635,8 @@ namespace NKStudio.TabularEditor.Window
             layer.style.width = Math.Max(0f, viewportWidth - RowNumberColumnWidth);
             layer.style.height = Math.Max(0f, layerHeight);
 
-            int firstColumn = Math.Clamp(Selection.MinColumn, 0, _columnWidths.Count - 1);
-            int lastColumn = Math.Clamp(Selection.MaxColumn, firstColumn, _columnWidths.Count - 1);
+            int firstColumn = Math.Clamp(firstColumnIndex, 0, _columnWidths.Count - 1);
+            int lastColumn = Math.Clamp(lastColumnIndex, firstColumn, _columnWidths.Count - 1);
             float scrollX = _scrollView.scrollOffset.x;
 
             float left = _columnLefts[firstColumn] - scrollX;
@@ -2412,8 +2650,11 @@ namespace NKStudio.TabularEditor.Window
             box.style.width = right - left + 1f;
             box.style.height = bottom - top + 1f;
 
+            // 미리보기 상자에는 핸들이 없다.
             VisualElement handle = box.Q(className: SelectionHandleClassName);
-            handle.style.display = showHandle ? DisplayStyle.Flex : DisplayStyle.None;
+
+            if (handle != null)
+                handle.style.display = showHandle ? DisplayStyle.Flex : DisplayStyle.None;
         }
 
         // 편집 필드는 항상 활성 셀 위에 놓여 있고 항상 포커스를 유지한다.

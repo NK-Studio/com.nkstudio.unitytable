@@ -536,6 +536,18 @@
     border-color: #3A72B0;
 }
 
+/* 채우기 핸들을 끄는 동안 늘어날 범위. UI Toolkit에 점선 테두리가 없어 옅은 채움과 가는 테두리로 구분한다. */
+.table-editor__fill-preview {
+    position: absolute;
+    border-width: 1px;
+    border-color: rgba(58, 121, 187, 0.9);
+    background-color: rgba(58, 121, 187, 0.12);
+}
+
+.table-editor--android-studio .table-editor__fill-preview {
+    border-color: var(--te-focus);
+}
+
 /* 테두리 선 한가운데에 핸들 중심이 오도록 바깥으로 민다. (핸들 반지름 6 + 테두리 절반 1) */
 .table-editor__selection-handle {
     position: absolute;

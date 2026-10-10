@@ -221,6 +221,7 @@ namespace NKStudio.TabularEditor
             // 실행 취소 작업 이름
             ["undo.editCell"] = ("Edit Cell", "셀 편집"),
             ["undo.fillRange"] = ("Fill Range", "범위 채우기"),
+            ["undo.fill"] = ("Fill", "채우기"),
             ["undo.paste"] = ("Paste", "붙여넣기"),
             ["undo.clearRange"] = ("Clear Range", "범위 비우기"),
             ["undo.insertRows"] = ("Insert Rows", "행 삽입"),
