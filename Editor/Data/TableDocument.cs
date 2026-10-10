@@ -17,6 +17,10 @@ namespace NKStudio.TabularEditor.Data
         private readonly List<string> _editedValues = new();
 
         private string _text = string.Empty;
+
+        // 원본 텍스트를 읽을 때 쓴 따옴표 문자다. 저장 형식(FileOptions.Quote)을 바꿔도 아직 편집하지 않은 셀은
+        // 원본 그대로 해석해야 하므로 따로 기억한다.
+        private char _sourceQuote = '"';
         private int _columnCount;
 
         /// <summary>
@@ -83,9 +87,11 @@ namespace NKStudio.TabularEditor.Data
         /// </summary>
         /// <param name="text">셀 구간이 가리키는 원본 텍스트입니다.</param>
         /// <param name="rows">행마다 셀 구간을 담은 목록입니다.</param>
-        internal void SetParsedContent(string text, List<List<CellSlot>> rows)
+        /// <param name="sourceQuote">파싱할 때 쓴 따옴표 문자입니다.</param>
+        internal void SetParsedContent(string text, List<List<CellSlot>> rows, char sourceQuote = '"')
         {
             ResetStorage(text ?? string.Empty);
+            _sourceQuote = sourceQuote;
 
             if (rows != null)
                 _rows.AddRange(rows);
@@ -121,6 +127,23 @@ namespace NKStudio.TabularEditor.Data
             }
 
             return Resolve(slot).IndexOf(keyword, comparison) >= 0;
+        }
+
+        /// <summary>
+        /// 셀 문자열을 만들지 않고 셀 값의 대략적인 글자 수를 반환합니다. 열 폭 맞춤의 후보를 고를 때 쓴다.
+        /// 원본 구간 셀은 원본 길이를 그대로 돌려주므로, 따옴표로 감싼 셀은 따옴표만큼 조금 길게 나온다.
+        /// </summary>
+        /// <param name="row">행 인덱스입니다.</param>
+        /// <param name="column">열 인덱스입니다.</param>
+        /// <returns>글자 수입니다. 범위를 벗어나거나 빈 셀이면 0입니다.</returns>
+        public int GetCellLengthHint(int row, int column)
+        {
+            if (row < 0 || row >= _rows.Count || column < 0 || column >= _columnCount)
+                return 0;
+
+            CellSlot slot = _rows[row][column];
+
+            return slot.IsEditedValue ? _editedValues[slot.EditedValueIndex].Length : slot.RawLength;
         }
 
         /// <summary>
@@ -377,7 +400,7 @@ namespace NKStudio.TabularEditor.Data
         {
             return slot.IsEditedValue
                 ? _editedValues[slot.EditedValueIndex]
-                : slot.ResolveFromText(_text);
+                : slot.ResolveFromText(_text, _sourceQuote);
         }
 
         // 빈 값은 목록에 넣지 않고 빈 셀로 둔다.

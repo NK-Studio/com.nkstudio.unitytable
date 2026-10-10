@@ -528,6 +528,18 @@
     background-color: #3A72B0;
 }
 
+/* 열 폭 맞춤용 측정 라벨: 셀과 같은 글꼴로 글자 폭만 재고 화면에는 보이지 않는다. */
+.table-editor__measure {
+    position: absolute;
+    left: 0;
+    top: 0;
+    visibility: hidden;
+}
+
+.table-editor__measure--wrap .table-editor__cell-label {
+    white-space: normal;
+}
+
 /* 셀 편집 오버레이 */
 
 /*
@@ -543,6 +555,59 @@
 
 .table-editor__edit-field--editing {
     opacity: 1;
+}
+
+/*
+ * 편집 중 입력칸: 셀 위에 떠서 내용에 따라 오른쪽·아래로 커진다(크기는 코드가 지정).
+ * 덮인 이웃 셀 글자가 비치지 않게 배경은 불투명하게 한다. 테두리·여백 합은 코드의 EditFieldHorizontal/VerticalPadding과 맞춘다.
+ */
+.table-editor__edit-field--editing .unity-base-text-field__input {
+    margin: 0;
+    /*
+     * SmoothCSV처럼 셀 글자보다 살짝(1px) 안쪽, 1px 아래에서 시작한다. 이 줄을 지우면 Unity 기본 여백이 들어가 더 떠 보인다.
+     * (테두리 2px + 이 여백 + Unity 글자 요소의 기본 왼쪽 여백 2px) 바꾸면 EditFieldHorizontal/VerticalPadding도 같이 바꾼다.
+     * 순서: 위 오른쪽 아래 왼쪽
+     */
+    padding: 1px 2px 2px 1px;
+    border-width: 2px;
+    border-radius: 0;
+    border-color: #3A79BB;
+    background-color: var(--unity-colors-window-background);
+    -unity-text-align: upper-left;
+}
+
+/*
+ * TRAP: TextField는 줄바꿈 여부(내부 스크롤 뷰를 가로까지 스크롤할지)를 입력 요소의 CustomStyleResolvedEvent에서만
+ * 다시 정한다. 그 이벤트는 사용자 정의 속성(--*)이 걸린 요소에만 오므로, 아래 속성이 없으면 --wrap을 붙여도
+ * 처음 만들 때의 '가로로 늘어나는' 모드가 그대로 남아 글자가 줄바꿈되지 않는다. 값 자체는 쓰지 않는다.
+ */
+.table-editor__edit-field .unity-base-text-field__input {
+    --table-editor-edit-wrap: 0;
+}
+
+.table-editor__edit-field--wrap .unity-base-text-field__input {
+    --table-editor-edit-wrap: 1;
+}
+
+/* 한 줄일 때는 줄바꿈하지 않고 입력칸 폭이 늘어난다. 표 영역 끝에 닿으면 --wrap이 붙어 줄바꿈한다. */
+.table-editor__edit-field .unity-text-element {
+    white-space: nowrap;
+}
+
+.table-editor__edit-field--wrap .unity-text-element {
+    white-space: normal;
+}
+
+/* 여러 줄 입력칸의 안쪽 상자는 글자 길이만큼 넓어지려 한다. 입력칸 폭에 묶어야 그 폭에서 줄바꿈된다. */
+.table-editor__edit-field--wrap .unity-base-text-field__multiline-container,
+.table-editor__edit-field--wrap .unity-base-text-field__multiline-container .unity-text-element {
+    width: 100%;
+    max-width: 100%;
+    flex-shrink: 1;
+}
+
+.table-editor__edit-field--header .unity-base-text-field__input {
+    -unity-font-definition: url("Fonts/IBMPlexSansKR-Bold.ttf");
 }
 
 /* 상태 바 */
@@ -564,6 +629,106 @@
     padding: 0;
     font-size: 11px;
     color: var(--unity-colors-label-text);
+}
+
+/* 상태 표시줄의 인코딩·개행·구분 기호: 누르면 파일 형식 대화상자가 열린다. */
+.table-editor__status-label--clickable {
+    padding: 2px 4px;
+    margin: 0 4px;
+    border-radius: 3px;
+    cursor: link;
+}
+
+.table-editor__status-label--clickable:hover {
+    background-color: var(--unity-colors-button-background-hover);
+}
+
+/*
+ * 파일 형식 대화상자(창 안 오버레이): 창 전체를 어둡게 덮어 뒤의 표를 누르지 못하게 하고, 가운데에 카드를 띄운다.
+ */
+.table-editor__dialog-overlay {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.45);
+}
+
+.table-editor__dialog-overlay--hidden {
+    display: none;
+}
+
+.table-editor__dialog {
+    width: 380px;
+    max-width: 90%;
+    padding: 16px 18px 14px 18px;
+    border-width: 1px;
+    border-radius: 8px;
+    border-color: var(--unity-colors-default-border);
+    background-color: var(--unity-colors-window-background);
+}
+
+.table-editor__dialog-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+
+.table-editor__dialog-title {
+    font-size: 16px;
+    -unity-font-definition: url("Fonts/IBMPlexSansKR-Bold.ttf");
+    color: var(--unity-colors-label-text);
+}
+
+.table-editor__dialog-label {
+    margin: 8px 0 4px 0;
+    color: var(--unity-colors-label-text);
+}
+
+.table-editor__dialog-dropdown,
+.table-editor__dialog-other-field {
+    margin: 0;
+}
+
+.table-editor__dialog-dropdown .unity-base-field__input {
+    height: 26px;
+    padding: 0 8px;
+}
+
+.table-editor__dialog-other-field {
+    margin-top: 4px;
+}
+
+.table-editor__dialog-toggle {
+    margin: 12px 0 0 0;
+}
+
+.table-editor__dialog-footer {
+    flex-direction: row;
+    justify-content: flex-end;
+    margin-top: 16px;
+}
+
+.table-editor__dialog-button {
+    height: 28px;
+    margin: 0 0 0 8px;
+    padding: 0 14px;
+    border-radius: 4px;
+    cursor: link;
+}
+
+.table-editor__dialog-button--primary {
+    border-color: #2F6CB0;
+    background-color: #3A79BB;
+    color: #FFFFFF;
+}
+
+.table-editor__dialog-button--primary:hover {
+    background-color: #4682C4;
 }
 
 /* 불러오는 중: 그리드 전체를 덮어 셀 클릭을 막는다. */
@@ -830,6 +995,13 @@
     background-color: var(--te-bg);
 }
 
+/* 편집 중 입력칸 */
+
+.table-editor--android-studio .table-editor__edit-field--editing .unity-base-text-field__input {
+    border-color: var(--te-focus);
+    background-color: var(--te-bg);
+}
+
 /* 선택 범위 테두리와 핸들 */
 
 .table-editor--android-studio .table-editor__selection-box {
@@ -838,6 +1010,27 @@
 
 .table-editor--android-studio .table-editor__selection-handle {
     border-color: var(--te-bg);
+    background-color: var(--te-focus);
+}
+
+/* 파일 형식 대화상자 */
+
+.table-editor--android-studio .table-editor__status-label--clickable:hover {
+    background-color: var(--te-hover);
+}
+
+.table-editor--android-studio .table-editor__dialog {
+    border-color: var(--te-control-border);
+    background-color: var(--te-panel-bg);
+}
+
+.table-editor--android-studio .table-editor__dialog-title,
+.table-editor--android-studio .table-editor__dialog-label {
+    color: var(--te-fg);
+}
+
+.table-editor--android-studio .table-editor__dialog-button--primary {
+    border-color: var(--te-focus);
     background-color: var(--te-focus);
 }
 

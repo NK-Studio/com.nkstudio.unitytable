@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Threading.Tasks;
@@ -23,6 +24,7 @@ namespace NKStudio.TabularEditor.Window
             "Packages/com.nkstudio.unitytable/Editor/Window/TableEditorWindow.uxml";
 
         private const string ExternalChangeBarHiddenClassName = "table-editor__external-change-bar--hidden";
+        private const string StatusLabelClickableClassName = "table-editor__status-label--clickable";
 
         // 작은 파일은 한 프레임 안에 끝나므로, 그보다 오래 걸릴 때만 안내를 띄워 깜박임을 막는다.
         private const long LoadingOverlayDelayMs = 150;
@@ -63,6 +65,8 @@ namespace NKStudio.TabularEditor.Window
 
         // 알림 바로 이미 알린 파일 해시다. 같은 변경으로 바를 다시 띄우지 않는다.
         private string _notifiedFileHash;
+
+        private TableFileFormatDialog _formatDialog;
 
         private VisualElement _externalChangeBar;
         private Button _externalReloadButton;
@@ -120,6 +124,7 @@ namespace NKStudio.TabularEditor.Window
 
             CacheToolbarElements();
             CacheExternalChangeBar();
+            CreateFormatDialog();
             ApplyTheme();
 
             _gridView = new TableGridView(gridContainer);
@@ -171,6 +176,17 @@ namespace NKStudio.TabularEditor.Window
 
             _fileWatcher?.Dispose();
             _fileWatcher = null;
+
+            if (_formatDialog != null)
+            {
+                _formatDialog.ReopenRequested -= OnFormatReopenRequested;
+                _formatDialog.ApplyRequested -= OnFormatApplyRequested;
+                _formatDialog.Closed -= OnFormatDialogClosed;
+                _formatDialog.Dispose();
+                _formatDialog = null;
+            }
+
+            UnregisterFormatLabelCallbacks();
 
             if (_inputRouter != null)
             {
@@ -264,7 +280,8 @@ namespace NKStudio.TabularEditor.Window
         }
 
         // preserveView는 같은 파일을 다시 읽을 때다. 불러오는 중 안내를 띄우지 않고 선택·스크롤·열 폭을 유지한다.
-        private void LoadDocument(string projectRelativePath, bool preserveView)
+        // forcedOptions는 파일 형식 대화상자의 '다시 열기'다. .meta 대신 그 형식으로 읽는다.
+        private void LoadDocument(string projectRelativePath, bool preserveView, TableFileOptions forcedOptions = null)
         {
             assetPath = projectRelativePath ?? string.Empty;
             int version = ++_loadVersion;
@@ -273,16 +290,32 @@ namespace NKStudio.TabularEditor.Window
 
             if (string.IsNullOrEmpty(assetPath))
             {
-                ApplyLoadedDocument(CreateEmptyDocument(), string.Empty, false);
+                ApplyLoadedDocument(CreateEmptyDocument(), string.Empty, false, null);
                 return;
             }
 
+            // .meta는 Unity API라 메인 스레드에서 미리 읽어 넘긴다.
+            TableFileFormatOverride format = forcedOptions != null
+                ? new TableFileFormatOverride
+                {
+                    EncodingCodePage = forcedOptions.Encoding.CodePage,
+                    Delimiter = forcedOptions.Delimiter,
+                    Quote = forcedOptions.Quote,
+                    QuoteMode = forcedOptions.QuoteMode,
+                }
+                : TableAssetSettings.LoadFileFormat(assetPath);
+
             BeginLoading(preserveView == false);
-            _ = LoadDocumentInBackground(assetPath, version, preserveView);
+            _ = LoadDocumentInBackground(assetPath, version, preserveView, format, forcedOptions);
         }
 
         // await 뒤의 코드는 Unity 동기화 컨텍스트를 통해 메인 스레드에서 이어진다.
-        private async Task LoadDocumentInBackground(string path, int version, bool preserveView)
+        private async Task LoadDocumentInBackground(
+            string path,
+            int version,
+            bool preserveView,
+            TableFileFormatOverride format,
+            TableFileOptions forcedOptions)
         {
             TableDocument document;
             string fileHash;
@@ -291,7 +324,7 @@ namespace NKStudio.TabularEditor.Window
             {
                 (document, fileHash) = await Task.Run(() =>
                 {
-                    TableDocument loaded = TableDocumentIO.Load(path, out string hash);
+                    TableDocument loaded = TableDocumentIO.Load(path, format, out string hash);
                     return (loaded, hash);
                 });
             }
@@ -310,7 +343,7 @@ namespace NKStudio.TabularEditor.Window
             if (this == null || version != _loadVersion)
                 return;
 
-            ApplyLoadedDocument(document, fileHash, preserveView);
+            ApplyLoadedDocument(document, fileHash, preserveView, forcedOptions);
         }
 
         // 불러오는 동안에는 문서를 비워 둔다. 저장·편집·Undo가 모두 문서가 없으면 아무 것도 하지 않으므로,
@@ -338,9 +371,21 @@ namespace NKStudio.TabularEditor.Window
                 _loadingOverlay.style.display = DisplayStyle.None;
         }
 
-        private void ApplyLoadedDocument(TableDocument document, string fileHash, bool preserveView)
+        private void ApplyLoadedDocument(TableDocument document, string fileHash, bool preserveView, TableFileOptions forcedOptions)
         {
             EndLoading();
+
+            // '다시 열기'로 고른 개행·마지막 줄바꿈·BOM 여부는 다음 저장에 쓴다. 파일에 BOM이 있었으면 그 인코딩이 맞으므로 그대로 둔다.
+            if (forcedOptions != null)
+            {
+                bool hasBom = document.FileOptions.Encoding.GetPreamble().Length > 0;
+
+                if (hasBom == false)
+                    document.FileOptions.Encoding = forcedOptions.Encoding;
+
+                document.FileOptions.NewLine = forcedOptions.NewLine;
+                document.FileOptions.EndsWithNewLine = forcedOptions.EndsWithNewLine;
+            }
 
             _document = document;
             _loadedFileHash = fileHash;
@@ -528,8 +573,100 @@ namespace NKStudio.TabularEditor.Window
             _loadedFileHash = TableDocumentIO.ComputeFileHash(assetPath);
             _commandStack.MarkSaved();
 
+            // 이제 파일이 이 형식으로 저장됐으니, 파일에서 다시 알아낼 수 없는 부분(레거시 인코딩·구분 기호·따옴표)을 .meta에 남긴다.
+            TableAssetSettings.SaveFileFormat(assetPath, TableFileFormatOverride.From(_document.FileOptions, _document.Format));
+
             // 덮어쓰기로 결정했으니 바깥 변경 알림은 더 이상 의미가 없다.
             HideExternalChangeBar();
+        }
+
+        // 상태 표시줄의 인코딩·개행·구분 기호를 누르면 파일 형식 대화상자를 연다.
+        private void CreateFormatDialog()
+        {
+            VisualElement themeRoot = rootVisualElement.Q<VisualElement>("table-editor");
+
+            if (themeRoot == null)
+                return;
+
+            // 테마 클래스가 붙는 요소 안에 두어야 Unity·Android Studio 색을 그대로 받는다.
+            _formatDialog = new TableFileFormatDialog(themeRoot);
+            _formatDialog.ReopenRequested += OnFormatReopenRequested;
+            _formatDialog.ApplyRequested += OnFormatApplyRequested;
+            _formatDialog.Closed += OnFormatDialogClosed;
+
+            foreach (Label label in FormatLabels())
+            {
+                label.AddToClassList(StatusLabelClickableClassName);
+                label.tooltip = "눌러서 파일 형식(인코딩·구분 기호·따옴표·줄 끝)을 바꿉니다.";
+                label.RegisterCallback<ClickEvent>(OnFormatLabelClicked);
+            }
+        }
+
+        private void UnregisterFormatLabelCallbacks()
+        {
+            foreach (Label label in FormatLabels())
+                label.UnregisterCallback<ClickEvent>(OnFormatLabelClicked);
+        }
+
+        private IEnumerable<Label> FormatLabels()
+        {
+            if (_encodingLabel != null)
+                yield return _encodingLabel;
+
+            if (_newLineLabel != null)
+                yield return _newLineLabel;
+
+            if (_delimiterLabel != null)
+                yield return _delimiterLabel;
+        }
+
+        private void OnFormatLabelClicked(ClickEvent evt)
+        {
+            if (_document == null || _formatDialog == null)
+                return;
+
+            _gridView?.CommitEdit();
+
+            if (_inputRouter != null)
+                _inputRouter.IsModalOpen = true;
+
+            _formatDialog.Open(_document.FileOptions, _document.Format);
+        }
+
+        private void OnFormatDialogClosed()
+        {
+            if (_inputRouter != null)
+                _inputRouter.IsModalOpen = false;
+
+            _gridView?.FocusGrid();
+        }
+
+        // 다시 열기: 고른 형식으로 파일을 다시 읽는다. 다시 연 형식은 .meta에 남겨 다음에도(팀원도) 같은 형식으로 읽게 한다.
+        private void OnFormatReopenRequested(TableFileOptions options)
+        {
+            if (_document == null || string.IsNullOrEmpty(assetPath))
+                return;
+
+            if (_commandStack.IsDirty)
+            {
+                bool reopen = EditorUtility.DisplayDialog(
+                    "다시 열기",
+                    "저장하지 않은 편집을 버리고 이 형식으로 파일을 다시 읽습니다.",
+                    "다시 열기",
+                    "취소");
+
+                if (reopen == false)
+                    return;
+            }
+
+            TableAssetSettings.SaveFileFormat(assetPath, TableFileFormatOverride.From(options, _document.Format));
+            LoadDocument(assetPath, false, options);
+        }
+
+        // 적용: 셀 값은 그대로 두고 저장할 형식만 바꾼다. Undo할 수 있고, 저장할 때 파일과 .meta에 반영된다.
+        private void OnFormatApplyRequested(TableFileOptions options)
+        {
+            ExecuteCommand(new ChangeFileOptionsCommand(options));
         }
 
         private void WatchFile(string projectRelativePath)
@@ -756,7 +893,7 @@ namespace NKStudio.TabularEditor.Window
                 _newLineLabel.text = TableFormatUtility.DescribeNewLine(_document.FileOptions?.NewLine);
 
             if (_delimiterLabel != null)
-                _delimiterLabel.text = TableFormatUtility.DescribeDelimiter(_document.Format);
+                _delimiterLabel.text = TableFormatUtility.DescribeDelimiter(_document.FileOptions);
         }
 
         // 셀 하나면 그 셀의 글자 수, 범위면 셀 개수를 보여 준다(예: "4자", "54 셀").

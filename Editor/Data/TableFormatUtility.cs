@@ -52,12 +52,40 @@ namespace NKStudio.TabularEditor.Data
         }
 
         /// <summary>
-        /// 상태 표시줄에 보일 구분 기호·따옴표 설명입니다. 따옴표는 구분자·따옴표·개행이 든 셀에만 붙이므로 "최소"입니다.
+        /// 상태 표시줄에 보일 구분 기호·따옴표 설명입니다. 예: <c>구분 기호=[,], 따옴표=["](최소)</c>
         /// </summary>
-        public static string DescribeDelimiter(TableFormat format)
+        public static string DescribeDelimiter(TableFileOptions options)
         {
-            string delimiter = format == TableFormat.Tsv ? "Tab" : ",";
-            return $"구분 기호=[{delimiter}], 따옴표=[\"](최소)";
+            options ??= new TableFileOptions();
+
+            string quote = options.Quote == TableFileOptions.NoQuote ? "없음" : options.Quote.ToString();
+            return $"구분 기호=[{DescribeDelimiterChar(options.Delimiter)}], 따옴표=[{quote}]({DescribeQuoteMode(options.QuoteMode)})";
+        }
+
+        /// <summary>
+        /// 구분 기호를 사람이 읽을 이름으로 바꿉니다. 보이지 않는 문자는 이름으로 적는다(탭 → "Tab", 공백 → "공백").
+        /// </summary>
+        public static string DescribeDelimiterChar(char delimiter)
+        {
+            return delimiter switch
+            {
+                '\t' => "Tab",
+                ' ' => "공백",
+                _ => delimiter.ToString(),
+            };
+        }
+
+        /// <summary>
+        /// 따옴표 감싸는 규칙의 표시 이름입니다.
+        /// </summary>
+        public static string DescribeQuoteMode(TableQuoteMode quoteMode)
+        {
+            return quoteMode switch
+            {
+                TableQuoteMode.Always => "항상",
+                TableQuoteMode.Never => "사용 안 함",
+                _ => "최소",
+            };
         }
 
         /// <summary>

@@ -4,7 +4,7 @@ using System.Text;
 namespace NKStudio.TabularEditor.Data
 {
     /// <summary>
-    /// 행과 셀 목록을 RFC 4180 규격의 구분자 텍스트로 직렬화합니다.
+    /// 행과 셀 목록을 RFC 4180 규격의 구분자 텍스트로 직렬화합니다. 따옴표 문자와 감싸는 규칙은 파일 형식에 따릅니다.
     /// </summary>
     public static class DelimitedTextWriter
     {
@@ -58,11 +58,31 @@ namespace NKStudio.TabularEditor.Data
         /// <returns>직렬화된 텍스트입니다.</returns>
         public static string Write(TableDocument document, char delimiter, string newLine, bool endsWithNewLine)
         {
+            TableFileOptions options = new()
+            {
+                Delimiter = delimiter,
+                NewLine = newLine,
+                EndsWithNewLine = endsWithNewLine,
+            };
+
+            return Write(document, options);
+        }
+
+        /// <summary>
+        /// 문서를 파일 형식(구분 기호·따옴표·감싸는 규칙·개행)에 맞춰 직렬화합니다.
+        /// </summary>
+        /// <param name="document">직렬화할 문서입니다.</param>
+        /// <param name="options">파일 형식입니다.</param>
+        /// <returns>직렬화된 텍스트입니다.</returns>
+        public static string Write(TableDocument document, TableFileOptions options)
+        {
             if (document == null || document.RowCount == 0)
                 return string.Empty;
 
-            if (string.IsNullOrEmpty(newLine))
-                newLine = "\n";
+            options ??= new TableFileOptions();
+
+            char delimiter = options.Delimiter;
+            string newLine = string.IsNullOrEmpty(options.NewLine) ? "\n" : options.NewLine;
 
             StringBuilder builder = new();
 
@@ -76,52 +96,67 @@ namespace NKStudio.TabularEditor.Data
                     if (columnIndex > 0)
                         builder.Append(delimiter);
 
-                    AppendField(builder, document.GetCell(rowIndex, columnIndex), delimiter);
+                    AppendField(builder, document.GetCell(rowIndex, columnIndex), delimiter, options.Quote, options.QuoteMode);
                 }
             }
 
-            if (endsWithNewLine)
+            if (options.EndsWithNewLine)
                 builder.Append(newLine);
 
             return builder.ToString();
         }
 
         /// <summary>
-        /// 셀 값을 필요한 경우에만 인용해 추가합니다.
+        /// 셀 값을 필요한 경우에만 큰따옴표로 인용해 추가합니다.
         /// </summary>
         /// <param name="builder">대상 문자열 버퍼입니다.</param>
         /// <param name="value">셀 값입니다.</param>
         /// <param name="delimiter">필드 구분자입니다.</param>
         public static void AppendField(StringBuilder builder, string value, char delimiter)
         {
-            if (string.IsNullOrEmpty(value))
-                return;
+            AppendField(builder, value, delimiter, '"', TableQuoteMode.Minimal);
+        }
 
-            if (!NeedsQuotes(value, delimiter))
+        /// <summary>
+        /// 셀 값을 감싸는 규칙에 따라 추가합니다.
+        /// </summary>
+        /// <param name="builder">대상 문자열 버퍼입니다.</param>
+        /// <param name="value">셀 값입니다.</param>
+        /// <param name="delimiter">필드 구분자입니다.</param>
+        /// <param name="quote">따옴표 문자입니다. <see cref="TableFileOptions.NoQuote"/>이면 감싸지 않는다.</param>
+        /// <param name="quoteMode">감싸는 규칙입니다.</param>
+        public static void AppendField(StringBuilder builder, string value, char delimiter, char quote, TableQuoteMode quoteMode)
+        {
+            value ??= string.Empty;
+
+            bool usesQuote = quote != TableFileOptions.NoQuote && quoteMode != TableQuoteMode.Never;
+            bool quoted = usesQuote && (quoteMode == TableQuoteMode.Always || NeedsQuotes(value, delimiter, quote));
+
+            if (quoted == false)
             {
                 builder.Append(value);
                 return;
             }
 
-            builder.Append('"');
+            builder.Append(quote);
 
             foreach (char current in value)
             {
-                if (current == '"')
-                    builder.Append('"');
+                if (current == quote)
+                    builder.Append(quote);
 
                 builder.Append(current);
             }
 
-            builder.Append('"');
+            builder.Append(quote);
         }
 
-        // 불필요한 인용은 파일 전체를 diff로 뒤집으므로 반드시 필요한 경우에만 인용한다.
-        private static bool NeedsQuotes(string value, char delimiter)
+        // 불필요한 인용은 파일 전체를 diff로 뒤집으므로 '최소' 규칙에서는 반드시 필요한 경우에만 인용한다.
+        private static bool NeedsQuotes(string value, char delimiter, char quote)
         {
             foreach (char current in value)
             {
-                if (current == delimiter || current == '"' || current == '\r' || current == '\n')
+                if (current == delimiter || current == quote || current == '\r' || current == '\n')
                     return true;
             }
 

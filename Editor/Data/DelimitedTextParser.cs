@@ -4,7 +4,8 @@ using System.Text;
 namespace NKStudio.TabularEditor.Data
 {
     /// <summary>
-    /// RFC 4180 규격의 구분자 기반 텍스트를 파싱합니다. 구분자를 인자로 받으므로 CSV와 TSV가 같은 코드를 사용합니다.
+    /// RFC 4180 규격의 구분자 기반 텍스트를 파싱합니다. 구분자와 따옴표 문자를 인자로 받으므로 CSV·TSV·세미콜론 구분 등이
+    /// 같은 코드를 사용합니다. 따옴표 문자는 옵션의 <see cref="TableFileOptions.Quote"/>를 쓰고, 옵션이 없으면 큰따옴표입니다.
     /// </summary>
     public static class DelimitedTextParser
     {
@@ -19,13 +20,14 @@ namespace NKStudio.TabularEditor.Data
         {
             List<List<CellSlot>> slotRows = ParseSlots(text, delimiter, options);
             List<List<string>> rows = new(slotRows.Count);
+            char quote = options?.Quote ?? '"';
 
             foreach (List<CellSlot> slotRow in slotRows)
             {
                 List<string> row = new(slotRow.Count);
 
                 foreach (CellSlot slot in slotRow)
-                    row.Add(slot.ResolveFromText(text));
+                    row.Add(slot.ResolveFromText(text, quote));
 
                 rows.Add(row);
             }
@@ -40,6 +42,10 @@ namespace NKStudio.TabularEditor.Data
         internal static List<List<CellSlot>> ParseSlots(string text, char delimiter, TableFileOptions options)
         {
             List<List<CellSlot>> rows = new();
+
+            // 따옴표를 쓰지 않는 형식이면 어떤 문자도 따옴표로 해석하지 않는다.
+            char quote = options?.Quote ?? '"';
+            bool usesQuote = quote != TableFileOptions.NoQuote;
 
             if (string.IsNullOrEmpty(text))
             {
@@ -66,10 +72,10 @@ namespace NKStudio.TabularEditor.Data
 
                 if (inQuotes)
                 {
-                    if (current == '"')
+                    if (current == quote)
                     {
                         // 인용 구간 안의 ""는 리터럴 따옴표 하나로 해석한다.
-                        if (index + 1 < text.Length && text[index + 1] == '"')
+                        if (index + 1 < text.Length && text[index + 1] == quote)
                         {
                             fieldHasContent = true;
                             index += 2;
@@ -86,7 +92,7 @@ namespace NKStudio.TabularEditor.Data
                     continue;
                 }
 
-                if (current == '"' && !fieldHasContent)
+                if (usesQuote && current == quote && !fieldHasContent)
                 {
                     inQuotes = true;
                     fieldIsQuoted = true;
@@ -165,7 +171,7 @@ namespace NKStudio.TabularEditor.Data
         /// 따옴표로 시작한 필드의 원본 구간을 셀 값으로 해석합니다. 파서와 같은 규칙을 구간 안에서 다시 적용한다.
         /// 예: <c>"say ""hi"""</c> → <c>say "hi"</c>, 닫는 따옴표 뒤 문자는 그대로 이어 붙는다(<c>"ab"cd</c> → <c>abcd</c>).
         /// </summary>
-        internal static string DecodeQuotedField(string text, int start, int length)
+        internal static string DecodeQuotedField(string text, int start, int length, char quote)
         {
             StringBuilder field = new(length);
             bool inQuotes = false;
@@ -178,11 +184,11 @@ namespace NKStudio.TabularEditor.Data
 
                 if (inQuotes)
                 {
-                    if (current == '"')
+                    if (current == quote)
                     {
-                        if (index + 1 < end && text[index + 1] == '"')
+                        if (index + 1 < end && text[index + 1] == quote)
                         {
-                            field.Append('"');
+                            field.Append(quote);
                             index += 2;
                             continue;
                         }
@@ -197,7 +203,7 @@ namespace NKStudio.TabularEditor.Data
                     continue;
                 }
 
-                if (current == '"' && field.Length == 0)
+                if (current == quote && field.Length == 0)
                 {
                     inQuotes = true;
                     index++;

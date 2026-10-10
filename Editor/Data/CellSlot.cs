@@ -50,13 +50,15 @@ namespace NKStudio.TabularEditor.Data
         /// <summary>
         /// 원본 텍스트에서 셀 값을 만듭니다. 편집 값 슬롯에는 쓸 수 없습니다.
         /// </summary>
-        public string ResolveFromText(string text)
+        /// <param name="text">원본 텍스트입니다.</param>
+        /// <param name="quote">이 셀을 읽을 때 쓴 따옴표 문자입니다.</param>
+        public string ResolveFromText(string text, char quote)
         {
             if (_length == 0)
                 return string.Empty;
 
             return IsQuoted
-                ? DelimitedTextParser.DecodeQuotedField(text, _start, RawLength)
+                ? DelimitedTextParser.DecodeQuotedField(text, _start, RawLength, quote)
                 : text.Substring(_start, _length);
         }
     }

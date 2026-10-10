@@ -52,6 +52,33 @@ namespace NKStudio.TabularEditor.Window
         private const float RowHeight = 20f;
         private const float MinColumnWidth = 40f;
 
+        // 내용에 맞출 때의 상한이다. 설명 문장처럼 긴 열이 화면을 다 차지하지 않게 하고, 넘치는 값은 …로 자른다.
+        private const float MaxFitColumnWidth = 400f;
+
+        // 측정한 글자 폭에 더하는 값: 셀 좌우 padding 4+4, 오른쪽 테두리 1, 글자가 경계에 붙어 보이지 않을 여유 6.
+        private const float FitColumnPadding = 15f;
+
+        // 열마다 실제로 글자 폭을 잴 행 수다. 비례 폰트라 글자 수가 가장 많은 값이 꼭 가장 넓지는 않아 여러 개를 잰다.
+        private const int FitCandidateCount = 5;
+
+        private const string MeasureClassName = "table-editor__measure";
+
+        // 선택 테두리 오른쪽 아래 동그란 핸들이 행 아래로 삐져나오는 길이(반지름 6 + 테두리 절반 1)다. USS와 맞춘다.
+        // 선택 레이어를 이만큼 아래로 더 열어 두지 않으면 마지막 행·고정 행 맨 아래에서 핸들이 반쯤 잘린다.
+        private const float SelectionHandleOverflow = 7f;
+        private const string MeasureWrapClassName = "table-editor__measure--wrap";
+        private const string EditFieldWrapClassName = "table-editor__edit-field--wrap";
+        private const string EditFieldHeaderClassName = "table-editor__edit-field--header";
+
+        // 편집 입력칸의 좌우 테두리 2px씩, 여백 왼쪽 1px·오른쪽 2px, Unity 글자 요소의 좌우 여백 2px씩, 캐럿 여유 2px이다. USS와 맞춰야 한다.
+        private const float EditFieldHorizontalPadding = 8f;
+
+        // 편집 입력칸의 위아래 테두리 2px씩, 여백 위 1px·아래 2px, 줄 간격 여유 2px이다. USS와 맞춰야 한다.
+        private const float EditFieldVerticalPadding = 9f;
+
+        // SmoothCSV처럼 편집 입력칸은 셀보다 넉넉하게(두 줄 높이) 연다. 20px 셀 높이 안에 테두리·여백까지 넣으면 글자가 잘린다.
+        private const float EditFieldMinHeight = RowHeight * 2f;
+
         // 빠르게 가로 스크롤할 때 가장자리 열이 한 프레임 비어 보이지 않도록 양옆으로 더 만들어 둔다.
         private const int OffscreenColumnBuffer = 2;
 
@@ -73,6 +100,10 @@ namespace NKStudio.TabularEditor.Window
         private readonly VisualElement _frozenSelectionLayer;
         private readonly VisualElement _frozenSelectionBox;
         private readonly TableColumnMenu _columnMenu;
+        private readonly Label _measureLabel;
+        private readonly Label _headerMeasureLabel;
+        private readonly Label _wrapMeasureLabel;
+        private readonly Label _headerWrapMeasureLabel;
         private readonly ContextualMenuManipulator _headerMenuManipulator;
         private readonly IVisualElementScheduledItem _placementUpdate;
         private readonly List<int> _itemIndices = new();
@@ -155,9 +186,16 @@ namespace NKStudio.TabularEditor.Window
             _editField.AddToClassList("table-editor__edit-field");
             _editField.isDelayed = false;
 
+            // 긴 값은 입력칸이 커지면서 여러 줄로 보여야 한다. Enter·Tab은 입력 라우터가 루트에서 먼저 처리하므로
+            // 여러 줄 입력칸이어도 개행 문자가 들어가지 않는다.
+            _editField.multiline = true;
+
+            // 스크롤바를 켜 두면 낮은 입력칸 오른쪽에 위아래 화살표가 끼어 보인다. 입력칸이 내용만큼 커지므로 끈다.
+            _editField.verticalScrollerVisibility = ScrollerVisibility.Hidden;
+
             // 포커스 시 자동 전체 선택을 끈다. 켜져 있으면 Focus() 뒤에 적용되어
             // 우리가 잡아 둔 커서 위치를 덮어쓰고, 다음 타이핑이 내용을 통째로 갈아치운다.
-            // 전체 선택이 필요한 F2/더블클릭 경로에서는 SelectAll()을 직접 호출한다.
+            // F2/더블클릭으로 편집을 열 때는 BeginEdit이 캐럿을 끝에 직접 둔다.
             _editField.selectAllOnFocus = false;
             _editField.selectAllOnMouseUp = false;
             _editField.RegisterCallback<FocusOutEvent>(OnEditFieldFocusOut);
@@ -166,6 +204,14 @@ namespace NKStudio.TabularEditor.Window
             SetEditFieldEditing(false);
 
             // 편집 필드보다 나중에 붙여야 그 위에 그려진다.
+            // 열 폭 맞춤용으로 실제 셀·헤더 행과 같은 스타일의 보이지 않는 라벨을 둔다.
+            _measureLabel = CreateMeasureLabel(false, false);
+            _headerMeasureLabel = CreateMeasureLabel(true, false);
+
+            // 편집 입력칸이 줄바꿈될 때의 높이를 재는 라벨이다.
+            _wrapMeasureLabel = CreateMeasureLabel(false, true);
+            _headerWrapMeasureLabel = CreateMeasureLabel(true, true);
+
             _columnMenu = new TableColumnMenu(_container);
             _columnMenu.SortRequested += RequestSort;
             _columnMenu.Closed += OnColumnMenuClosed;
@@ -339,6 +385,9 @@ namespace NKStudio.TabularEditor.Window
             if (preserveView == false)
             {
                 Selection.SetActive(new CellCoord(0, 0));
+
+                // 측정 라벨의 폰트가 해석된 뒤에 재야 하고, 창이 .meta에서 읽은 헤더 행 수도 반영된 뒤여야 한다.
+                _listView.schedule.Execute(FitColumnsToContent);
                 return;
             }
 
@@ -528,12 +577,13 @@ namespace NKStudio.TabularEditor.Window
             _suppressEditCommit = false;
 
             SetEditFieldEditing(true);
+
+            // 시작 값은 변경 이벤트 없이 넣었으므로, 그 값에 맞춰 입력칸 크기를 여기서 정한다.
+            UpdateEditFieldPlacement();
             FocusEditField();
 
-            if (initialText == null)
-                _editField.SelectAll();
-            else
-                _editField.SelectRange(startText.Length, startText.Length);
+            // SmoothCSV처럼 F2·더블클릭으로 열어도 전체 선택하지 않고 캐럿을 끝에 둔다. 이어서 쓰거나 고치기 쉽다.
+            _editField.SelectRange(startText.Length, startText.Length);
 
             RefreshCellStates();
         }
@@ -763,6 +813,15 @@ namespace NKStudio.TabularEditor.Window
             if (resizer.parent?.userData is not TableCellBinding binding || binding.Column < 0)
                 return;
 
+            // 경계 더블클릭은 엑셀·시트처럼 그 열을 내용에 맞춘다.
+            if (evt.clickCount >= 2)
+            {
+                evt.StopPropagation();
+                _listView.focusController?.IgnoreEvent(evt);
+                FitColumn(binding.Column);
+                return;
+            }
+
             _resizingColumn = binding.Column;
             _resizeStartX = evt.position.x;
             _resizeStartWidth = _columnWidths[binding.Column];
@@ -800,10 +859,109 @@ namespace NKStudio.TabularEditor.Window
         private void SetColumnWidth(int columnIndex, float width)
         {
             _columnWidths[columnIndex] = width;
+            ApplyColumnWidths();
+        }
+
+        private void ApplyColumnWidths()
+        {
             UpdateColumnLefts();
             UpdateVisibleColumnRange();
             RebindVisibleColumns();
             _placementUpdate.ExecuteLater(0);
+        }
+
+        private Label CreateMeasureLabel(bool isHeaderRow, bool wraps)
+        {
+            // 헤더 행 클래스 아래에 두어야 굵은 글꼴 규칙이 그대로 적용된다.
+            VisualElement holder = new();
+            holder.AddToClassList(MeasureClassName);
+            holder.EnableInClassList(HeaderRowClassName, isHeaderRow);
+            holder.EnableInClassList(MeasureWrapClassName, wraps);
+            holder.pickingMode = PickingMode.Ignore;
+
+            Label label = new();
+            label.AddToClassList(CellLabelClassName);
+            label.pickingMode = PickingMode.Ignore;
+            holder.Add(label);
+
+            _container.Add(holder);
+            return label;
+        }
+
+        // 값이 있는 열을 모두 내용에 맞춘다. 값이 하나도 없는 열은 지금 폭을 둔다.
+        private void FitColumnsToContent()
+        {
+            if (_document == null)
+                return;
+
+            bool changed = false;
+
+            for (int column = 0; column < _columnWidths.Count; column++)
+            {
+                if (!TryMeasureColumnWidth(column, out float width))
+                    continue;
+
+                _columnWidths[column] = width;
+                changed = true;
+            }
+
+            if (changed)
+                ApplyColumnWidths();
+        }
+
+        private void FitColumn(int columnIndex)
+        {
+            if (columnIndex < 0 || columnIndex >= _columnWidths.Count)
+                return;
+
+            if (TryMeasureColumnWidth(columnIndex, out float width))
+                SetColumnWidth(columnIndex, width);
+        }
+
+        // 헤더 행은 굵은 글꼴, 본문은 보통 글꼴로 잰다. 측정 라벨의 폰트가 아직 해석되지 않아 0이 나오면 맞추지 않는다.
+        private bool TryMeasureColumnWidth(int columnIndex, out float width)
+        {
+            float widest = 0f;
+
+            widest = Math.Max(widest, MeasureWidest(_headerMeasureLabel, columnIndex, 0, HeaderRowCount - 1));
+            widest = Math.Max(widest, MeasureWidest(_measureLabel, columnIndex, HeaderRowCount, MaxRow));
+
+            if (widest <= 0f || float.IsNaN(widest))
+            {
+                width = 0f;
+                return false;
+            }
+
+            width = Math.Clamp(widest + FitColumnPadding, MinColumnWidth, MaxFitColumnWidth);
+            return true;
+        }
+
+        private float MeasureWidest(Label measureLabel, int columnIndex, int firstRow, int lastRow)
+        {
+            if (lastRow < firstRow)
+                return 0f;
+
+            List<int> candidates = ColumnFitCandidates.SelectLongestRows(
+                row => _document.GetCellLengthHint(row, columnIndex),
+                firstRow,
+                lastRow,
+                FitCandidateCount);
+
+            float widest = 0f;
+
+            foreach (int row in candidates)
+            {
+                Vector2 size = measureLabel.MeasureTextSize(
+                    _document.GetCell(row, columnIndex),
+                    0f,
+                    VisualElement.MeasureMode.Undefined,
+                    0f,
+                    VisualElement.MeasureMode.Undefined);
+
+                widest = Math.Max(widest, size.x);
+            }
+
+            return widest;
         }
 
         // 드래그로 범위를 넓힌다. 누른 곳이 anchor로 남고 지나가는 곳이 focus가 된다.
@@ -1739,7 +1897,15 @@ namespace NKStudio.TabularEditor.Window
                 Math.Min(Selection.MaxRow, lastFrozenRow),
                 0,
                 0f,
+                _frozenPane.layout.height + SelectionHandleOverflow,
                 isHandleInFrozenPane);
+
+            // 행이 적으면 ListView가 contentViewport를 행 높이만큼만 잡으므로, 목록 영역 아래 끝을 넘지 않는 선에서 핸들 자리만큼 더 연다.
+            float viewportTop = _scrollView.contentViewport.worldBound.yMin;
+            float listBottom = _listView.worldBound.yMax;
+            float bodyLayerHeight = Math.Min(
+                _scrollView.contentViewport.layout.height + SelectionHandleOverflow,
+                listBottom - viewportTop);
 
             PlaceSelectionSegment(
                 _selectionLayer,
@@ -1749,6 +1915,7 @@ namespace NKStudio.TabularEditor.Window
                 Selection.MaxRow,
                 HeaderRowCount,
                 _scrollView.scrollOffset.y,
+                bodyLayerHeight,
                 isHandleInFrozenPane == false);
         }
 
@@ -1762,6 +1929,7 @@ namespace NKStudio.TabularEditor.Window
             int lastRow,
             int areaFirstRow,
             float scrollY,
+            float layerHeight,
             bool showHandle)
         {
             Rect areaLayout = area.layout;
@@ -1781,7 +1949,7 @@ namespace NKStudio.TabularEditor.Window
             layer.style.left = areaOrigin.x + RowNumberColumnWidth;
             layer.style.top = areaOrigin.y;
             layer.style.width = Math.Max(0f, viewportWidth - RowNumberColumnWidth);
-            layer.style.height = areaLayout.height;
+            layer.style.height = Math.Max(0f, layerHeight);
 
             int firstColumn = Math.Clamp(Selection.MinColumn, 0, _columnWidths.Count - 1);
             int lastColumn = Math.Clamp(Selection.MaxColumn, firstColumn, _columnWidths.Count - 1);
@@ -1817,11 +1985,51 @@ namespace NKStudio.TabularEditor.Window
                 return;
 
             Vector2 topLeft = _container.WorldToLocal(new Vector2(worldBound.xMin, worldBound.yMin));
+            Rect cellRect = new(topLeft, worldBound.size);
 
-            _editField.style.left = topLeft.x;
-            _editField.style.top = topLeft.y;
-            _editField.style.width = worldBound.width;
-            _editField.style.height = worldBound.height;
+            // 대기 중에는 활성 셀과 같은 크기로 숨어 있다가(IME를 받기 위해), 편집 중에만 내용에 맞춰 커진다.
+            EditOverlayPlacement placement = _isEditing
+                ? ComputeEditingPlacement(cellRect)
+                : new EditOverlayPlacement(cellRect, false);
+
+            _editField.style.left = placement.Rect.x;
+            _editField.style.top = placement.Rect.y;
+            _editField.style.width = placement.Rect.width;
+            _editField.style.height = placement.Rect.height;
+            _editField.EnableInClassList(EditFieldWrapClassName, placement.IsWrapped);
+            _editField.EnableInClassList(EditFieldHeaderClassName, _isEditing && _editingCoord.Row < HeaderRowCount);
+        }
+
+        // SmoothCSV처럼 짧으면 셀 크기, 길면 오른쪽으로 표 영역 끝까지, 그보다 길면 줄바꿈해서 아래로 늘린다.
+        private EditOverlayPlacement ComputeEditingPlacement(Rect cellRect)
+        {
+            // 가로 끝은 세로 스크롤바를 뺀 데이터 영역(contentViewport), 세로 끝은 목록 영역 전체다.
+            // 행이 적으면 ListView가 contentViewport를 행 높이만큼만 잡아서, 그걸 쓰면 입력칸이 아래로 커지지 못한다.
+            Rect dataWorld = _scrollView.contentViewport.worldBound;
+            Rect listWorld = _listView.worldBound;
+            Rect viewportWorld = Rect.MinMaxRect(dataWorld.xMin, listWorld.yMin, dataWorld.xMax, listWorld.yMax);
+            Vector2 viewportTopLeft = _container.WorldToLocal(viewportWorld.min);
+            Rect viewport = new(viewportTopLeft, viewportWorld.size);
+
+            bool isHeaderRow = _editingCoord.Row < HeaderRowCount;
+            Label measureLabel = isHeaderRow ? _headerMeasureLabel : _measureLabel;
+            Label wrapMeasureLabel = isHeaderRow ? _headerWrapMeasureLabel : _wrapMeasureLabel;
+
+            string text = _editField.value ?? string.Empty;
+
+            float textWidth = measureLabel.MeasureTextSize(
+                text, 0f, VisualElement.MeasureMode.Undefined, 0f, VisualElement.MeasureMode.Undefined).x;
+
+            return EditOverlayLayout.Compute(
+                cellRect,
+                viewport,
+                textWidth,
+                text.IndexOf('\n') >= 0,
+                width => wrapMeasureLabel.MeasureTextSize(
+                    text, width, VisualElement.MeasureMode.Exactly, 0f, VisualElement.MeasureMode.Undefined).y,
+                EditFieldHorizontalPadding,
+                EditFieldVerticalPadding,
+                EditFieldMinHeight);
         }
 
         // 편집 중이 아닐 때는 투명하게 두고 클릭이 셀로 지나가게 한다. display는 끄지 않는다.
@@ -1865,8 +2073,15 @@ namespace NKStudio.TabularEditor.Window
         // 항상 포커스된 빈 필드에 사용자가 직접 입력했다는 뜻이다. IME 조합도 이 경로로 들어온다.
         private void OnEditFieldValueChanged(ChangeEvent<string> evt)
         {
-            if (_suppressEditCommit || _isEditing || _document == null)
+            if (_suppressEditCommit || _document == null)
                 return;
+
+            // 편집 중에는 입력에 맞춰 입력칸 크기만 다시 맞춘다.
+            if (_isEditing)
+            {
+                UpdateEditFieldPlacement();
+                return;
+            }
 
             if (string.IsNullOrEmpty(evt.newValue))
                 return;
@@ -1882,6 +2097,7 @@ namespace NKStudio.TabularEditor.Window
             _isTypingEntry = true;
 
             SetEditFieldEditing(true);
+            UpdateEditFieldPlacement();
             RefreshCellStates();
         }
 

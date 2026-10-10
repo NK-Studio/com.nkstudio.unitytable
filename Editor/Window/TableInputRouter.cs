@@ -45,6 +45,11 @@ namespace NKStudio.TabularEditor.Window
         }
 
         /// <summary>
+        /// 대화상자 같은 모달 오버레이가 열려 있는지 여부입니다. 열려 있으면 키·명령을 그리드로 보내지 않고 오버레이에 맡긴다.
+        /// </summary>
+        public bool IsModalOpen { get; set; }
+
+        /// <summary>
         /// 저장이 요청되었을 때 호출됩니다.
         /// </summary>
         public event Action SaveRequested;
@@ -97,6 +102,9 @@ namespace NKStudio.TabularEditor.Window
 
         private void OnKeyDown(KeyDownEvent evt)
         {
+            if (IsModalOpen)
+                return;
+
             if (_gridView.IsEditing)
             {
                 HandleEditingKey(evt);
@@ -394,7 +402,7 @@ namespace NKStudio.TabularEditor.Window
 
         private void OnValidateCommand(ValidateCommandEvent evt)
         {
-            if (_gridView.IsEditing || !IsHandledCommand(evt.commandName))
+            if (IsModalOpen || _gridView.IsEditing || !IsHandledCommand(evt.commandName))
                 return;
 
             evt.StopPropagation();
@@ -402,7 +410,7 @@ namespace NKStudio.TabularEditor.Window
 
         private void OnExecuteCommand(ExecuteCommandEvent evt)
         {
-            if (_gridView.IsEditing || !IsHandledCommand(evt.commandName))
+            if (IsModalOpen || _gridView.IsEditing || !IsHandledCommand(evt.commandName))
                 return;
 
             switch (evt.commandName)

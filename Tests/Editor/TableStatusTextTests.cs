@@ -31,10 +31,25 @@ namespace NKStudio.TabularEditor.Tests
         }
 
         [Test]
-        public void Test_DescribeDelimiter()
+        public void Test_DescribeDelimiter_Defaults()
         {
-            Assert.AreEqual("구분 기호=[,], 따옴표=[\"](최소)", TableFormatUtility.DescribeDelimiter(TableFormat.Csv));
-            Assert.AreEqual("구분 기호=[Tab], 따옴표=[\"](최소)", TableFormatUtility.DescribeDelimiter(TableFormat.Tsv));
+            Assert.AreEqual("구분 기호=[,], 따옴표=[\"](최소)", TableFormatUtility.DescribeDelimiter(new TableFileOptions()));
+            Assert.AreEqual(
+                "구분 기호=[Tab], 따옴표=[\"](최소)",
+                TableFormatUtility.DescribeDelimiter(new TableFileOptions { Delimiter = '\t' }));
+        }
+
+        [Test]
+        public void Test_DescribeDelimiter_CustomQuoteAndMode()
+        {
+            TableFileOptions options = new()
+            {
+                Delimiter = ';',
+                Quote = TableFileOptions.NoQuote,
+                QuoteMode = TableQuoteMode.Always,
+            };
+
+            Assert.AreEqual("구분 기호=[;], 따옴표=[없음](항상)", TableFormatUtility.DescribeDelimiter(options));
         }
     }
 }
