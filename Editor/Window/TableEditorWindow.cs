@@ -168,11 +168,19 @@ namespace NKStudio.TabularEditor.Window
         private void OnEnable()
         {
             TableEditorTheme.Changed += ApplyTheme;
+            TableEditorSettings.Changed += OnSettingsChanged;
+        }
+
+        // 글꼴 크기는 Preferences와 Ctrl/Cmd+휠 줌이 함께 바꾼다. 다른 설정(자동 맞춤·새 CSV)은 쓸 때마다 읽으므로 따로 할 일이 없다.
+        private void OnSettingsChanged()
+        {
+            _gridView?.ApplyFontSize(TableEditorSettings.FontSize);
         }
 
         private void OnDisable()
         {
             TableEditorTheme.Changed -= ApplyTheme;
+            TableEditorSettings.Changed -= OnSettingsChanged;
 
             _fileWatcher?.Dispose();
             _fileWatcher = null;
@@ -234,7 +242,7 @@ namespace NKStudio.TabularEditor.Window
         }
 
         /// <summary>
-        /// 창 오른쪽 위 ⋮ 메뉴에 테마 선택 항목을 추가합니다.
+        /// 창 오른쪽 위 ⋮ 메뉴에 테마 선택과 환경 설정(Preferences > Tabular Editor) 열기 항목을 추가합니다.
         /// </summary>
         public void AddItemsToMenu(GenericMenu menu)
         {
@@ -245,6 +253,12 @@ namespace NKStudio.TabularEditor.Window
                     TableEditorTheme.Style == style,
                     () => TableEditorTheme.Style = style);
             }
+
+            // 글꼴 크기·자동 맞춤·새 CSV 형식 등 나머지 설정은 Preferences 페이지에 있다.
+            menu.AddItem(
+                new GUIContent("환경 설정..."),
+                false,
+                () => SettingsService.OpenUserPreferences(TableEditorPreferences.Path));
         }
 
         private void ApplyTheme()

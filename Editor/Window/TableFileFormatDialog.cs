@@ -17,33 +17,12 @@ namespace NKStudio.TabularEditor.Window
     {
         private const string OverlayClassName = "table-editor__dialog-overlay";
         private const string HiddenClassName = "table-editor__dialog-overlay--hidden";
-        private const string OtherChoice = "기타...";
+        private const string OtherChoice = TableFormatChoices.OtherLabel;
 
-        private static readonly (string Label, char Value)[] DelimiterChoices =
-        {
-            ("쉼표 ( , )", ','),
-            ("탭", '\t'),
-            ("세미콜론 ( ; )", ';'),
-            ("콜론 ( : )", ':'),
-            ("파이프 ( | )", '|'),
-            ("공백", ' '),
-        };
-
-        private static readonly (string Label, char Value)[] QuoteChoices =
-        {
-            ("없음", TableFileOptions.NoQuote),
-            ("\"", '"'),
-            ("'", '\''),
-        };
-
-        // TableQuoteMode 순서(Always, Minimal, Never)와 같다.
-        private static readonly string[] QuoteModeChoices = { "항상", "최소", "사용 안 함" };
-
-        private static readonly (string Label, string Value)[] NewLineChoices =
-        {
-            ("LF", "\n"),
-            ("CRLF", "\r\n"),
-        };
+        private static readonly (string Label, char Value)[] DelimiterChoices = TableFormatChoices.Delimiters;
+        private static readonly (string Label, char Value)[] QuoteChoices = TableFormatChoices.Quotes;
+        private static readonly string[] QuoteModeChoices = TableFormatChoices.QuoteModes;
+        private static readonly (string Label, string Value)[] NewLineChoices = TableFormatChoices.NewLines;
 
         private readonly VisualElement _overlay;
         private readonly VisualElement _card;

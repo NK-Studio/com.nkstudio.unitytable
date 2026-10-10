@@ -47,13 +47,7 @@ namespace NKStudio.TabularEditor.Window
         private const string FrozenContentClassName = "table-editor__frozen-content";
         private const string HeaderRowClassName = "table-editor__row--header";
 
-        private const float DefaultColumnWidth = 160f;
-        private const float RowNumberColumnWidth = 46f;
-        private const float RowHeight = 20f;
         private const float MinColumnWidth = 40f;
-
-        // 내용에 맞출 때의 상한이다. 설명 문장처럼 긴 열이 화면을 다 차지하지 않게 하고, 넘치는 값은 …로 자른다.
-        private const float MaxFitColumnWidth = 400f;
 
         // 측정한 글자 폭에 더하는 값: 셀 좌우 padding 4+4, 오른쪽 테두리 1, 글자가 경계에 붙어 보이지 않을 여유 6.
         private const float FitColumnPadding = 15f;
@@ -76,8 +70,13 @@ namespace NKStudio.TabularEditor.Window
         // 편집 입력칸의 위아래 테두리 2px씩, 여백 위 1px·아래 2px, 줄 간격 여유 2px이다. USS와 맞춰야 한다.
         private const float EditFieldVerticalPadding = 9f;
 
-        // SmoothCSV처럼 편집 입력칸은 셀보다 넉넉하게(두 줄 높이) 연다. 20px 셀 높이 안에 테두리·여백까지 넣으면 글자가 잘린다.
-        private const float EditFieldMinHeight = RowHeight * 2f;
+        // SmoothCSV처럼 편집 입력칸은 셀보다 넉넉하게(두 줄 높이) 연다. 셀 높이 안에 테두리·여백까지 넣으면 글자가 잘린다.
+        private float EditFieldMinHeight => RowHeight * 2f;
+
+        // 행 높이·행 번호 폭·열 제목 높이·기본 열 폭은 글꼴 크기에 비례한다(Preferences 글꼴 크기, Ctrl/Cmd+휠 줌).
+        private float RowHeight => _metrics.RowHeight;
+        private float RowNumberColumnWidth => _metrics.RowNumberColumnWidth;
+        private float DefaultColumnWidth => _metrics.DefaultColumnWidth;
 
         // 빠르게 가로 스크롤할 때 가장자리 열이 한 프레임 비어 보이지 않도록 양옆으로 더 만들어 둔다.
         private const int OffscreenColumnBuffer = 2;
@@ -87,6 +86,13 @@ namespace NKStudio.TabularEditor.Window
 
         private readonly VisualElement _container;
         private readonly VisualElement _header;
+        private readonly HashSet<CellCoord> _pendingAutoFitCells = new();
+        private readonly IVisualElementScheduledItem _autoFitUpdate;
+
+        private TableGridMetrics _metrics = TableGridMetrics.FromFontSize(TableEditorSettings.FontSize);
+
+        // 트랙패드처럼 휠 값이 잘게 들어오면 모아서 한 칸씩 줌한다.
+        private float _zoomWheelAccumulator;
         private readonly VisualElement _headerContent;
         private readonly VisualElement _cornerCell;
         private readonly ListView _listView;
@@ -231,6 +237,89 @@ namespace NKStudio.TabularEditor.Window
             _container.RegisterCallback<PointerDownEvent>(OnGridPointerDown, TrickleDown.TrickleDown);
             _container.RegisterCallback<PointerMoveEvent>(OnGridPointerMove, TrickleDown.TrickleDown);
             _container.RegisterCallback<PointerUpEvent>(OnGridPointerUp, TrickleDown.TrickleDown);
+
+            // 스크롤 뷰가 휠을 먼저 가져가기 전에 Ctrl/Cmd+휠을 줌으로 가로챈다.
+            _container.RegisterCallback<WheelEvent>(OnGridWheel, TrickleDown.TrickleDown);
+
+            // 붙여넣기·모두 바꾸기처럼 셀이 한꺼번에 바뀌어도 한 번만 넓힌다.
+            _autoFitUpdate = _listView.schedule.Execute(FitEditedCells);
+            _autoFitUpdate.Pause();
+
+            ApplyMetricsToElements();
+        }
+
+        /// <summary>
+        /// 글꼴 크기를 바꿉니다. 행 높이·행 번호 폭·열 제목 높이가 함께 바뀌고, 열 너비도 같은 비율로 커지거나 줄어듭니다.
+        /// </summary>
+        public void ApplyFontSize(int fontSize)
+        {
+            TableGridMetrics next = TableGridMetrics.FromFontSize(fontSize);
+
+            if (next.FontSize == _metrics.FontSize)
+                return;
+
+            float ratio = next.Scale / _metrics.Scale;
+            _metrics = next;
+
+            for (int index = 0; index < _columnWidths.Count; index++)
+                _columnWidths[index] = Math.Max(MinColumnWidth, MathF.Round(_columnWidths[index] * ratio));
+
+            ApplyMetricsToElements();
+            UpdateColumnLefts();
+            UpdateVisibleColumnRange();
+
+            // TRAP: ListView는 fixedItemHeight를 바꿔도 이미 만든 행의 높이를 고치지 않는다. 내용 높이만 새 값으로 계산해
+            // 행은 옛 높이로 겹치고 목록이 잘린다. 행을 새로 만들어야 한다. 버려질 본문 행은 좌표 판별에 걸리지 않게 먼저 뺀다.
+            _boundRows.RemoveWhere(row => _frozenRows.Contains(row) == false);
+            _listView.Rebuild();
+
+            RebindVisibleColumns();
+            RebuildItems();
+            _placementUpdate.ExecuteLater(0);
+        }
+
+        // 글꼴에 비례하는 크기를 이미 만든 요소에 입힌다. 새로 만드는 요소는 만들 때 같은 값을 쓴다.
+        private void ApplyMetricsToElements()
+        {
+            // 셀·열 제목·측정 라벨은 이 글꼴 크기를 물려받는다.
+            _container.style.fontSize = _metrics.FontSize;
+            _editField.style.fontSize = _metrics.FontSize;
+            _header.style.height = _metrics.HeaderHeight;
+            _cornerCell.style.width = RowNumberColumnWidth;
+            _listView.fixedItemHeight = RowHeight;
+
+            _container.Query<VisualElement>(className: RowNumberClassName).ForEach(ApplyRowNumberMetrics);
+
+            foreach (TableRowElement row in _frozenRows)
+                row.style.height = RowHeight;
+        }
+
+        private void ApplyRowNumberMetrics(VisualElement rowNumberCell)
+        {
+            rowNumberCell.style.width = RowNumberColumnWidth;
+
+            Label label = rowNumberCell.Q<Label>(className: RowNumberLabelClassName);
+
+            if (label != null)
+                label.style.fontSize = _metrics.RowNumberFontSize;
+        }
+
+        // Ctrl(macOS는 Cmd) + 휠: 위로 굴리면 크게, 아래로 굴리면 작게. Preferences의 글꼴 크기를 바로 바꾼다.
+        private void OnGridWheel(WheelEvent evt)
+        {
+            if (TableEditorSettings.MouseWheelZoom == false || evt.actionKey == false)
+                return;
+
+            evt.StopPropagation();
+            _zoomWheelAccumulator -= evt.delta.y;
+
+            // 마우스 휠은 한 칸에 1 이상, 트랙패드는 잘게 들어온다. 1만큼 모일 때마다 1px씩 바꾼다.
+            if (Math.Abs(_zoomWheelAccumulator) < 1f)
+                return;
+
+            int step = _zoomWheelAccumulator > 0f ? 1 : -1;
+            _zoomWheelAccumulator = 0f;
+            TableEditorSettings.FontSize += step;
         }
 
         private VisualElement CreateSelectionLayer(out VisualElement box)
@@ -387,7 +476,8 @@ namespace NKStudio.TabularEditor.Window
                 Selection.SetActive(new CellCoord(0, 0));
 
                 // 측정 라벨의 폰트가 해석된 뒤에 재야 하고, 창이 .meta에서 읽은 헤더 행 수도 반영된 뒤여야 한다.
-                _listView.schedule.Execute(FitColumnsToContent);
+                if (TableEditorSettings.AutoFitOnOpen)
+                    _listView.schedule.Execute(FitColumnsToContent);
                 return;
             }
 
@@ -674,6 +764,8 @@ namespace NKStudio.TabularEditor.Window
             _container.UnregisterCallback<PointerDownEvent>(OnGridPointerDown, TrickleDown.TrickleDown);
             _container.UnregisterCallback<PointerMoveEvent>(OnGridPointerMove, TrickleDown.TrickleDown);
             _container.UnregisterCallback<PointerUpEvent>(OnGridPointerUp, TrickleDown.TrickleDown);
+            _container.UnregisterCallback<WheelEvent>(OnGridWheel, TrickleDown.TrickleDown);
+            _autoFitUpdate.Pause();
             _header.UnregisterCallback<PointerDownEvent>(OnHeaderPointerDown, TrickleDown.TrickleDown);
             _header.RemoveManipulator(_headerMenuManipulator);
             _scrollView.horizontalScroller.valueChanged -= OnHorizontalScrollChanged;
@@ -909,6 +1001,50 @@ namespace NKStudio.TabularEditor.Window
                 ApplyColumnWidths();
         }
 
+        // 자동 맞춤 열의 최대 너비: 표 영역(행 번호 열 제외) 너비의 n%(Preferences)다.
+        private float MaxAutoFitWidth()
+        {
+            float dataAreaWidth = GetViewportWidth() - RowNumberColumnWidth;
+            return TableGridMetrics.MaxAutoFitWidth(dataAreaWidth, TableEditorSettings.AutoFitMaxWidthPercent, MinColumnWidth);
+        }
+
+        // '셀을 편집할 때 자동 맞춤': 바뀐 셀 값이 열보다 넓으면 그 열을 넓힌다. 직접 넓혀 둔 열을 줄이지는 않는다.
+        private void FitEditedCells()
+        {
+            if (_document == null || _pendingAutoFitCells.Count == 0)
+                return;
+
+            float maxWidth = MaxAutoFitWidth();
+            bool changed = false;
+
+            foreach (CellCoord coord in _pendingAutoFitCells)
+            {
+                if (coord.Column < 0 || coord.Column >= _columnWidths.Count)
+                    continue;
+
+                Label measureLabel = coord.Row < HeaderRowCount ? _headerMeasureLabel : _measureLabel;
+                float textWidth = measureLabel.MeasureTextSize(
+                    _document.GetCell(coord.Row, coord.Column),
+                    0f,
+                    VisualElement.MeasureMode.Undefined,
+                    0f,
+                    VisualElement.MeasureMode.Undefined).x;
+
+                float wanted = Math.Clamp(textWidth + FitColumnPadding, MinColumnWidth, maxWidth);
+
+                if (wanted <= _columnWidths[coord.Column])
+                    continue;
+
+                _columnWidths[coord.Column] = wanted;
+                changed = true;
+            }
+
+            _pendingAutoFitCells.Clear();
+
+            if (changed)
+                ApplyColumnWidths();
+        }
+
         private void FitColumn(int columnIndex)
         {
             if (columnIndex < 0 || columnIndex >= _columnWidths.Count)
@@ -924,7 +1060,9 @@ namespace NKStudio.TabularEditor.Window
             float widest = 0f;
 
             widest = Math.Max(widest, MeasureWidest(_headerMeasureLabel, columnIndex, 0, HeaderRowCount - 1));
-            widest = Math.Max(widest, MeasureWidest(_measureLabel, columnIndex, HeaderRowCount, MaxRow));
+            // 본문은 위에서부터 '스캔할 행 수'만큼만 본다(Preferences). 헤더 행은 항상 본다.
+            int lastScannedRow = (int)Math.Min(MaxRow, (long)HeaderRowCount + TableEditorSettings.AutoFitScanRows - 1);
+            widest = Math.Max(widest, MeasureWidest(_measureLabel, columnIndex, HeaderRowCount, lastScannedRow));
 
             if (widest <= 0f || float.IsNaN(widest))
             {
@@ -932,7 +1070,7 @@ namespace NKStudio.TabularEditor.Window
                 return false;
             }
 
-            width = Math.Clamp(widest + FitColumnPadding, MinColumnWidth, MaxFitColumnWidth);
+            width = Math.Clamp(widest + FitColumnPadding, MinColumnWidth, MaxAutoFitWidth());
             return true;
         }
 
@@ -1152,6 +1290,12 @@ namespace NKStudio.TabularEditor.Window
 
         private void OnDocumentCellChanged(int row, int column)
         {
+            if (TableEditorSettings.AutoFitOnEdit)
+            {
+                _pendingAutoFitCells.Add(new CellCoord(row, column));
+                _autoFitUpdate.ExecuteLater(0);
+            }
+
             if (row < HeaderRowCount)
             {
                 if (row < _frozenRows.Count)
@@ -1544,6 +1688,7 @@ namespace NKStudio.TabularEditor.Window
 
             Label label = new();
             label.AddToClassList(RowNumberLabelClassName);
+            label.style.fontSize = _metrics.RowNumberFontSize;
             label.pickingMode = PickingMode.Ignore;
             cell.Add(label);
 
