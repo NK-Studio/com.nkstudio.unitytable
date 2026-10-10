@@ -44,6 +44,7 @@ https://github.com/NK-Studio/com.nkstudio.unitytable.git
 | 방향키 (타이핑 중) | 입력을 확정하고 그 방향으로 이동 |
 | 방향키 (F2 편집 중) | 캐럿 이동 |
 | Ctrl+Enter (편집 중) | 입력한 값을 선택 범위 전체에 채움 |
+| Alt+Enter (편집 중) | 셀 안에서 줄바꿈 |
 | Esc | 편집 취소 |
 | Delete / Backspace | 선택 종류에 따라 행·열 삭제 또는 내용 비우기 |
 | Ctrl+Alt+↓ / ↑ | 아래 / 위에 행 추가 (선택한 행 수만큼, 편집 중이면 확정 후) |

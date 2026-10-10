@@ -142,6 +142,14 @@ namespace NKStudio.TabularEditor.Window
                         return;
                     }
 
+                    // Alt/Option+Enter: 확정하지 않고 셀 안에 줄을 바꾼다(Excel과 같다).
+                    if (evt.altKey)
+                    {
+                        _gridView.InsertLineBreakInEdit();
+                        Consume(evt);
+                        return;
+                    }
+
                     _gridView.CommitEdit();
                     _gridView.MoveActiveCell(evt.shiftKey ? -1 : 1, 0, false);
                     Consume(evt);

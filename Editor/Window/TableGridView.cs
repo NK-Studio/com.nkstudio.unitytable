@@ -1346,6 +1346,20 @@ namespace NKStudio.TabularEditor.Window
         }
 
         /// <summary>
+        /// 편집 중인 입력칸의 캐럿 위치에 줄바꿈을 넣습니다(Alt/Option+Enter). 편집 중이 아니면 아무것도 하지 않습니다.
+        /// 입력칸은 줄바꿈이 들어가면 아래로 늘어난다(EditOverlayLayout).
+        /// </summary>
+        public void InsertLineBreakInEdit()
+        {
+            if (_isEditing == false)
+                return;
+
+            string value = TextInsertion.Insert(_editField.value, _editField.cursorIndex, _editField.selectIndex, "\n", out int caret);
+            _editField.value = value;
+            _editField.SelectRange(caret, caret);
+        }
+
+        /// <summary>
         /// 편집 중인 값을 선택 범위의 모든 셀에 씁니다(Excel의 Ctrl+Enter). 한 칸만 선택했으면 평소 확정과 같습니다.
         /// </summary>
         public void CommitEditToSelection()
