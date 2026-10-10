@@ -122,6 +122,16 @@ namespace NKStudio.TabularEditor
             ["status.unsaved"] = ("Unsaved", "저장되지 않음"),
             ["status.deleteHint"] = ("{0} · Delete to remove", "{0} · Delete로 삭제"),
             ["status.delimiter"] = ("Delimiter=[{0}], Quote=[{1}]({2})", "구분 기호=[{0}], 따옴표=[{1}]({2})"),
+            ["status.missingAssetsTip"] = (
+                "Asset paths that can't be found. Click to go to the next one.",
+                "에셋을 찾을 수 없는 경로입니다. 누르면 다음 칸으로 이동합니다."),
+            ["count.missingAsset.one"] = ("{0} missing asset path", "찾을 수 없는 경로 {0}개"),
+            ["count.missingAsset.other"] = ("{0} missing asset paths", "찾을 수 없는 경로 {0}개"),
+            ["asset.missingTitle"] = ("Asset not found", "에셋을 찾을 수 없음"),
+            ["asset.missingResources"] = (
+                "No Resources/{0}.* in any Resources folder.",
+                "어느 Resources 폴더에도 Resources/{0}.* 가 없습니다."),
+            ["asset.missingProject"] = ("No asset at {0}.", "{0} 에 에셋이 없습니다."),
             ["status.changeFormatTip"] = (
                 "Click to change the file format (encoding, delimiter, quote, line ending).",
                 "눌러서 파일 형식(인코딩·구분 기호·따옴표·줄 끝)을 바꿉니다."),

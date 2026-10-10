@@ -111,6 +111,25 @@ namespace NKStudio.TabularEditor.AssetLinks
                 _previewPoll = _card.schedule.Execute(PollPreview).Every(PreviewPollIntervalMs);
         }
 
+        /// <summary>
+        /// 에셋을 찾을 수 없는 셀의 카드입니다. 무엇을 찾다가 실패했는지 보여 준다.
+        /// </summary>
+        public void ShowMissing(string value, Rect cellWorldBound)
+        {
+            _previewPoll?.Pause();
+            _asset = null;
+
+            _name.text = Localization.Get("asset.missingTitle");
+            _info.text = AssetPathIndex.DescribeLookup(value);
+            _path.text = string.Empty;
+            _image.image = AssetPathIndex.GetMissingIcon(true);
+
+            _card.style.display = DisplayStyle.Flex;
+            _card.BringToFront();
+            Place(cellWorldBound);
+            _card.schedule.Execute(() => Place(cellWorldBound));
+        }
+
         public void Hide()
         {
             _previewPoll?.Pause();

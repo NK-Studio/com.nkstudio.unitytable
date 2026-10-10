@@ -576,6 +576,18 @@
     -unity-background-scale-mode: scale-to-fit;
 }
 
+/* 에셋 경로 열에서 에셋을 찾을 수 없는 셀 */
+.table-editor__cell--missing-asset .table-editor__cell-label,
+.table-editor--android-studio .table-editor__cell--missing-asset .table-editor__cell-label {
+    color: #E05252;
+}
+
+/* 상태 표시줄의 '찾을 수 없는 경로 N개' */
+.table-editor__status-label--warning,
+.table-editor--android-studio .table-editor__status-label--warning {
+    color: #E0A040;
+}
+
 .table-editor__cell--editing .table-editor__cell-asset-icon {
     visibility: hidden;
 }

@@ -45,6 +45,7 @@ namespace NKStudio.TabularEditor.Window
         private Label _positionLabel;
         private Label _sizeLabel;
         private Label _stateLabel;
+        private Label _missingAssetsLabel;
         private Label _encodingLabel;
         private Label _newLineLabel;
         private Label _delimiterLabel;
@@ -142,6 +143,7 @@ namespace NKStudio.TabularEditor.Window
             _gridView.PasteRequested += PasteClipboard;
             _gridView.ClearRequested += ClearSelection;
             _gridView.HeaderRowsRequested += OnHeaderRowsRequested;
+            _gridView.MissingAssetsChanged += UpdateStatusBar;
 
             _searchController = new TableSearchController(rootVisualElement, _gridView);
             _searchController.CommandRequested += OnCommandRequested;
@@ -238,6 +240,7 @@ namespace NKStudio.TabularEditor.Window
             }
 
             UnregisterFormatLabelCallbacks();
+            _missingAssetsLabel?.UnregisterCallback<ClickEvent>(OnMissingAssetsClicked);
 
             if (_goToBar != null)
             {
@@ -278,6 +281,7 @@ namespace NKStudio.TabularEditor.Window
                 _gridView.PasteRequested -= PasteClipboard;
                 _gridView.ClearRequested -= ClearSelection;
                 _gridView.HeaderRowsRequested -= OnHeaderRowsRequested;
+                _gridView.MissingAssetsChanged -= UpdateStatusBar;
                 _gridView.Dispose();
                 _gridView = null;
             }
@@ -564,6 +568,8 @@ namespace NKStudio.TabularEditor.Window
             _positionLabel = rootVisualElement.Q<Label>("table-editor__status-position");
             _sizeLabel = rootVisualElement.Q<Label>("table-editor__status-size");
             _stateLabel = rootVisualElement.Q<Label>("table-editor__status-state");
+            _missingAssetsLabel = rootVisualElement.Q<Label>("table-editor__status-missing-assets");
+            _missingAssetsLabel?.RegisterCallback<ClickEvent>(OnMissingAssetsClicked);
             _encodingLabel = rootVisualElement.Q<Label>("table-editor__status-encoding");
             _newLineLabel = rootVisualElement.Q<Label>("table-editor__status-newline");
             _delimiterLabel = rootVisualElement.Q<Label>("table-editor__status-delimiter");
@@ -932,6 +938,11 @@ namespace NKStudio.TabularEditor.Window
             _gridView?.DeleteSelection();
         }
 
+        private void OnMissingAssetsClicked(ClickEvent evt)
+        {
+            _gridView?.SelectNextMissingAsset();
+        }
+
         private void OpenSearch()
         {
             _searchController?.Open();
@@ -1015,6 +1026,14 @@ namespace NKStudio.TabularEditor.Window
 
             if (_stateLabel != null)
                 _stateLabel.text = _commandStack.IsDirty ? Localization.Get("status.unsaved") : string.Empty;
+
+            // 에셋 경로 열에 찾을 수 없는 경로가 있을 때만 보인다. 누르면 다음 문제 칸으로 간다.
+            if (_missingAssetsLabel != null)
+            {
+                int missing = _gridView.MissingAssetCount;
+                _missingAssetsLabel.text = missing > 0 ? Localization.Count("count.missingAsset", missing) : string.Empty;
+                _missingAssetsLabel.style.display = missing > 0 ? DisplayStyle.Flex : DisplayStyle.None;
+            }
 
             if (_encodingLabel != null)
                 _encodingLabel.text = TableFormatUtility.DescribeEncoding(_document.FileOptions?.Encoding);

@@ -67,6 +67,27 @@ namespace NKStudio.TabularEditor.AssetLinks
         }
 
         /// <summary>
+        /// 찾을 수 없는 경로 셀에 붙이는 Unity 기본 경고 아이콘입니다. large면 미리보기 카드용 큰 아이콘입니다.
+        /// </summary>
+        public static Texture GetMissingIcon(bool large)
+        {
+            return EditorGUIUtility.IconContent(large ? "console.warnicon" : "console.warnicon.sml").image;
+        }
+
+        /// <summary>
+        /// 찾을 수 없는 값이 어디를 찾아봤는지 설명합니다. 예) Resources/Art/Sprite/x.* (Resources 경로) 또는 Assets/a.png
+        /// </summary>
+        public static string DescribeLookup(string value)
+        {
+            string trimmed = value?.Trim() ?? string.Empty;
+            bool isProjectPath = trimmed.StartsWith("Assets/", StringComparison.Ordinal) || trimmed.StartsWith("Packages/", StringComparison.Ordinal);
+
+            return isProjectPath
+                ? Localization.Format("asset.missingProject", trimmed)
+                : Localization.Format("asset.missingResources", trimmed);
+        }
+
+        /// <summary>
         /// Project 창에서 에셋 위치를 깜빡여 보여 줍니다. Unity 선택은 바꾸지 않는다.
         /// </summary>
         public static void Ping(string assetPath)

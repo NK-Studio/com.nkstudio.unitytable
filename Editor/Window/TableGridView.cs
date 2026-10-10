@@ -21,6 +21,7 @@ namespace NKStudio.TabularEditor.Window
         private const string CellClassName = "table-editor__cell";
         private const string CellLabelClassName = "table-editor__cell-label";
         private const string CellAssetIconClassName = "table-editor__cell-asset-icon";
+        private const string CellMissingAssetClassName = "table-editor__cell--missing-asset";
         private const string SelectedClassName = "table-editor__cell--selected";
         private const string ActiveClassName = "table-editor__cell--active";
         private const string MatchClassName = "table-editor__cell--match";
@@ -109,6 +110,9 @@ namespace NKStudio.TabularEditor.Window
         private readonly VisualElement _frozenFillPreviewBox;
         private readonly List<VisualElement> _fillHandles = new();
         private readonly List<bool> _assetColumns = new();
+
+        // 에셋 경로 열에서 에셋을 찾을 수 없는 칸이다. 행 우선 순서로 정렬되어 있다(상태 표시줄 개수·다음 칸 이동).
+        private readonly List<CellCoord> _missingAssets = new();
         private readonly TableAssetPreviewCard _assetCard;
         private readonly IVisualElementScheduledItem _assetColumnRefresh;
         private IVisualElementScheduledItem _assetHoverShow;
@@ -407,6 +411,36 @@ namespace NKStudio.TabularEditor.Window
             return columnIndex >= 0 && columnIndex < _assetColumns.Count && _assetColumns[columnIndex];
         }
 
+        /// <summary>
+        /// 에셋 경로 열에서 에셋을 찾을 수 없는 칸 수입니다.
+        /// </summary>
+        public int MissingAssetCount => _missingAssets.Count;
+
+        /// <summary>
+        /// 찾을 수 없는 칸 목록이 바뀌면 호출됩니다(상태 표시줄 갱신).
+        /// </summary>
+        public event Action MissingAssetsChanged;
+
+        /// <summary>
+        /// 활성 셀 다음에 오는(행 우선) 찾을 수 없는 칸으로 이동합니다. 마지막을 지나면 처음으로 돌아갑니다.
+        /// </summary>
+        public void SelectNextMissingAsset()
+        {
+            if (MissingAssets.TryFindNext(_missingAssets, Selection.Anchor, out CellCoord next) == false)
+                return;
+
+            SetActiveCell(next, false);
+            FocusGrid();
+        }
+
+        // 에셋 경로 열의 값이 경로처럼 생겼는데(/ 포함) 에셋을 찾을 수 없는 칸이다.
+        private bool IsMissingAsset(int columnIndex, string value)
+        {
+            return IsAssetColumn(columnIndex)
+                && MissingAssets.LooksLikePath(value)
+                && AssetPathIndex.TryResolve(value, out _) == false;
+        }
+
         private bool TryGetAssetPath(CellCoord coord, out string assetPath)
         {
             assetPath = null;
@@ -450,7 +484,31 @@ namespace NKStudio.TabularEditor.Window
                 }
             }
 
+            CollectMissingAssets();
             RebindVisibleColumns();
+        }
+
+        // 화면 밖까지 에셋 경로 열 전체를 훑는다. 경로 해석은 사전 조회라 2만 행이어도 수 ms다.
+        private void CollectMissingAssets()
+        {
+            _missingAssets.Clear();
+
+            if (_document != null && _assetColumns.Contains(true))
+            {
+                for (int row = HeaderRowCount; row < _document.RowCount; row++)
+                {
+                    for (int column = 0; column < _assetColumns.Count; column++)
+                    {
+                        if (_assetColumns[column] == false || _document.GetCellLengthHint(row, column) == 0)
+                            continue;
+
+                        if (IsMissingAsset(column, _document.GetCell(row, column)))
+                            _missingAssets.Add(new CellCoord(row, column));
+                    }
+                }
+            }
+
+            MissingAssetsChanged?.Invoke();
         }
 
         // 헤더 행을 뺀 본문 값을 위에서부터 돌려준다. 빈 칸은 문자열을 만들지 않고 건너뛴다.
@@ -472,14 +530,26 @@ namespace NKStudio.TabularEditor.Window
             if (icon == null)
                 return;
 
-            if (IsAssetColumn(columnIndex) == false || AssetPathIndex.TryResolve(value, out string assetPath) == false)
+            bool isMissing = IsMissingAsset(columnIndex, value);
+            cell.EnableInClassList(CellMissingAssetClassName, isMissing);
+
+            Texture image;
+
+            if (isMissing)
+                image = AssetPathIndex.GetMissingIcon(false);
+            else if (IsAssetColumn(columnIndex) && AssetPathIndex.TryResolve(value, out string assetPath))
+                image = AssetPathIndex.GetIcon(assetPath);
+            else
+                image = null;
+
+            if (image == null)
             {
                 icon.style.display = DisplayStyle.None;
                 label.style.paddingLeft = StyleKeyword.Null;
                 return;
             }
 
-            icon.style.backgroundImage = new StyleBackground(AssetPathIndex.GetIcon(assetPath) as Texture2D);
+            icon.style.backgroundImage = new StyleBackground(image as Texture2D);
             icon.style.width = AssetIconSize;
             icon.style.height = AssetIconSize;
             icon.style.display = DisplayStyle.Flex;
@@ -491,7 +561,7 @@ namespace NKStudio.TabularEditor.Window
         {
             bool isBusy = evt.pressedButtons != 0 || _isFillDragging || _isEditing || _dragSelectMode != DragSelectMode.None;
 
-            if (isBusy || TryGetCellAt(evt.position, out CellCoord coord) == false || TryGetAssetPath(coord, out _) == false)
+            if (isBusy || TryGetCellAt(evt.position, out CellCoord coord) == false || HasAssetCard(coord) == false)
             {
                 ClearAssetHover();
                 return;
@@ -510,14 +580,26 @@ namespace NKStudio.TabularEditor.Window
             ClearAssetHover();
         }
 
+        // 에셋을 찾았거나, 찾을 수 없는 경로인 칸에 카드를 띄운다.
+        private bool HasAssetCard(CellCoord coord)
+        {
+            if (TryGetAssetPath(coord, out _))
+                return true;
+
+            return _document != null && IsMissingAsset(coord.Column, _document.GetCell(coord.Row, coord.Column));
+        }
+
         private void ShowAssetCard(CellCoord coord)
         {
             VisualElement cell = FindCellElement(coord);
 
-            if (cell == null || TryGetAssetPath(coord, out string assetPath) == false)
+            if (cell == null)
                 return;
 
-            _assetCard.Show(assetPath, cell.worldBound);
+            if (TryGetAssetPath(coord, out string assetPath))
+                _assetCard.Show(assetPath, cell.worldBound);
+            else if (HasAssetCard(coord))
+                _assetCard.ShowMissing(_document.GetCell(coord.Row, coord.Column), cell.worldBound);
         }
 
         private void ClearAssetHover()
