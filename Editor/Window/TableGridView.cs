@@ -857,6 +857,81 @@ namespace NKStudio.TabularEditor.Window
             _dragSelectMode = evt.clickCount < 2 && TryGetCellAt(evt.position, out _)
                 ? DragSelectMode.Cells
                 : DragSelectMode.None;
+
+            if (_dragSelectMode == DragSelectMode.Cells || evt.clickCount >= 2)
+                return;
+
+            // 마지막 열 오른쪽·마지막 행 아래 같은 빈 공간을 누르면 가장 가까운 셀을 누른 것으로 본다.
+            if (!IsOverEmptyGridArea(evt.target as VisualElement, evt.position))
+                return;
+
+            if (!TryGetNearestCellAt(evt.position, out CellCoord nearest))
+                return;
+
+            // 셀을 직접 누를 때와 같다. IgnoreEvent가 없으면 포커스 컨트롤러가 ListView로 포커스를 되가져간다.
+            evt.StopPropagation();
+            _listView.focusController?.IgnoreEvent(evt);
+
+            SetActiveCell(nearest, evt.shiftKey);
+            FocusGrid();
+            _dragSelectMode = DragSelectMode.Cells;
+        }
+
+        // 셀이 없는 데이터 영역(목록 영역·고정 헤더 행 패널)인지 본다. 편집 입력칸·열 메뉴·스크롤바·행 번호 거터는 제외한다.
+        // TRAP: 행이 적으면 ListView가 contentViewport를 행 높이만큼만 잡아, 마지막 행 아래 빈 공간은 뷰포트 밖(ListView 자신)이다.
+        // 그래서 뷰포트가 아니라 ListView 전체를 기준으로 보고 스크롤바만 뺀다.
+        private bool IsOverEmptyGridArea(VisualElement target, Vector2 position)
+        {
+            if (target == null || IsOverFrozenGutter(position))
+                return false;
+
+            if (IsSelfOrDescendant(_scrollView.verticalScroller, target) || IsSelfOrDescendant(_scrollView.horizontalScroller, target))
+                return false;
+
+            return IsSelfOrDescendant(_listView, target) || IsSelfOrDescendant(_frozenPane, target);
+        }
+
+        private static bool IsSelfOrDescendant(VisualElement ancestor, VisualElement element)
+        {
+            return element == ancestor || ancestor.Contains(element);
+        }
+
+        // 좌표에서 가장 가까운 보이는 셀을 찾는다. 고정 헤더 행 패널 위면 고정 행에서, 아니면 본문에서만 고른다.
+        // 마지막 열 오른쪽을 누르면 그 행의 마지막 열이, 마지막 행 아래를 누르면 그 열의 마지막 행이 잡힌다.
+        private bool TryGetNearestCellAt(Vector2 position, out CellCoord coord)
+        {
+            bool overFrozenPane = HeaderRowCount > 0 && _frozenPane.worldBound.Contains(position);
+            float viewportTop = _scrollView.contentViewport.worldBound.yMin;
+            CellCoord found = default;
+            float bestDistance = float.MaxValue;
+
+            _container.Query<VisualElement>(className: CellClassName).ForEach(cell =>
+            {
+                if (cell.userData is not TableCellBinding binding || binding.Row < 0)
+                    return;
+
+                if (_frozenPane.Contains(cell) != overFrozenPane)
+                    return;
+
+                Rect bound = cell.worldBound;
+
+                // 위로 스크롤되어 뷰포트 밖에 남은 행은 고르지 않는다.
+                if (overFrozenPane == false && bound.yMax <= viewportTop)
+                    return;
+
+                float dx = Mathf.Max(0f, Mathf.Max(bound.xMin - position.x, position.x - bound.xMax));
+                float dy = Mathf.Max(0f, Mathf.Max(bound.yMin - position.y, position.y - bound.yMax));
+                float distance = dx * dx + dy * dy;
+
+                if (distance >= bestDistance)
+                    return;
+
+                bestDistance = distance;
+                found = new CellCoord(binding.Row, binding.Column);
+            });
+
+            coord = found;
+            return bestDistance < float.MaxValue;
         }
 
         private void OnColumnMenuButtonPointerDown(PointerDownEvent evt)
@@ -1139,7 +1214,9 @@ namespace NKStudio.TabularEditor.Window
                 return;
             }
 
-            if (!TryGetCellAt(evt.position, out CellCoord coord))
+            // 드래그가 마지막 열 오른쪽·마지막 행 아래 빈 공간으로 나가면 가장 가까운 셀까지 넓힌다.
+            if (!TryGetCellAt(evt.position, out CellCoord coord)
+                && (!IsOverEmptyGridArea(evt.target as VisualElement, evt.position) || !TryGetNearestCellAt(evt.position, out coord)))
                 return;
 
             if (coord.Equals(Selection.Focus))
