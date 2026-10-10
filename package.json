@@ -1,6 +1,6 @@
 {
   "name": "com.nkstudio.unitytable",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "displayName": "Tabular Editor",
   "description": "A UI Toolkit table editor for editing CSV/TSV files like a spreadsheet inside the Unity Editor. Supports keyboard cell navigation, Ctrl+S save, undo/redo, copy/paste, and find & replace.",
   "unity": "6000.0",
