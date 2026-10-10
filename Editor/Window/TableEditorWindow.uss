@@ -567,6 +567,61 @@
     background-color: #3A72B0;
 }
 
+/* 에셋 경로 셀: 글자 앞에 Project 창 아이콘을 붙인다. 크기·글자 여백은 코드가 글꼴 크기에 맞춰 정한다. */
+.table-editor__cell-asset-icon {
+    position: absolute;
+    left: 4px;
+    top: 50%;
+    translate: 0 -50%;
+    -unity-background-scale-mode: scale-to-fit;
+}
+
+.table-editor__cell--editing .table-editor__cell-asset-icon {
+    visibility: hidden;
+}
+
+/* 에셋 경로 셀에 마우스를 올려 두면 뜨는 미리보기 카드 */
+.table-editor__asset-card {
+    position: absolute;
+    width: 220px;
+    padding: 8px;
+    border-width: 1px;
+    border-radius: 4px;
+    border-color: var(--unity-colors-default-border);
+    background-color: var(--unity-colors-window-background);
+}
+
+.table-editor__asset-card-image {
+    width: 128px;
+    height: 128px;
+    align-self: center;
+    margin-bottom: 6px;
+}
+
+.table-editor__asset-card-name {
+    -unity-font-definition: url("Fonts/IBMPlexSansKR-Bold.ttf");
+    -unity-font-style: normal;
+    white-space: normal;
+    color: var(--unity-colors-label-text);
+}
+
+.table-editor__asset-card-info {
+    font-size: 11px;
+    white-space: normal;
+    color: var(--unity-colors-label-text);
+    opacity: 0.7;
+}
+
+.table-editor--android-studio .table-editor__asset-card {
+    border-color: var(--te-control-border);
+    background-color: var(--te-panel-bg);
+}
+
+.table-editor--android-studio .table-editor__asset-card-name,
+.table-editor--android-studio .table-editor__asset-card-info {
+    color: var(--te-fg);
+}
+
 /* 열 폭 맞춤용 측정 라벨: 셀과 같은 글꼴로 글자 폭만 재고 화면에는 보이지 않는다. */
 .table-editor__measure {
     position: absolute;

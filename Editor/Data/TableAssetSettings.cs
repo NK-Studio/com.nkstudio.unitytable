@@ -61,7 +61,7 @@ namespace NKStudio.TabularEditor.Data
     }
 
     /// <summary>
-    /// 파일별 설정(헤더 행 수, 파일에서 알아낼 수 없는 파일 형식)을 그 파일의 .meta(AssetImporter.userData)에 저장합니다.
+    /// 파일별 설정(헤더 행 수, 파일에서 알아낼 수 없는 파일 형식, 에셋 경로 미리보기 끄기)을 그 파일의 .meta(AssetImporter.userData)에 저장합니다.
     /// 개인 설정(EditorPrefs)이 아니라 .meta에 두는 이유는, 어디까지가 헤더인지·어떤 구분 기호로 읽는지는 파일의 성질이라
     /// VCS로 팀원과 함께 공유되어야 하기 때문입니다.
     /// </summary>
@@ -79,8 +79,12 @@ namespace NKStudio.TabularEditor.Data
             public int quote = Unset;
             public int quoteMode = Unset;
 
+            // 기본은 켜짐이라, 끈 파일에만 적는다.
+            public bool assetPreviewOff;
+
             public bool IsDefault =>
-                headerRowCount <= 0 && encodingCodePage == 0 && delimiter == Unset && quote == Unset && quoteMode == Unset;
+                headerRowCount <= 0 && encodingCodePage == 0 && delimiter == Unset && quote == Unset && quoteMode == Unset
+                && assetPreviewOff == false;
         }
 
         // 다른 도구가 userData를 쓰고 있을 때 우리 것과 구분하는 데 쓴다. 이 패키지가 쓰는 JSON에는 항상 들어 있다.
@@ -137,6 +141,24 @@ namespace NKStudio.TabularEditor.Data
         }
 
         /// <summary>
+        /// userData 문자열에서 이 파일의 에셋 경로 미리보기가 켜져 있는지 읽습니다. 적혀 있지 않으면 켜짐입니다.
+        /// </summary>
+        public static bool ParseAssetPreviewEnabled(string userData)
+        {
+            return Parse(userData).assetPreviewOff == false;
+        }
+
+        /// <summary>
+        /// 기존 userData의 다른 항목은 유지한 채 에셋 경로 미리보기 켜짐 여부만 바꾼 userData 문자열을 만듭니다.
+        /// </summary>
+        public static string FormatAssetPreviewEnabled(string userData, bool isEnabled)
+        {
+            Settings settings = Parse(userData);
+            settings.assetPreviewOff = isEnabled == false;
+            return Format(settings);
+        }
+
+        /// <summary>
         /// userData가 비어 있거나 이 패키지가 쓴 값인지 확인합니다. 아니면 덮어쓰면 안 됩니다.
         /// </summary>
         public static bool IsOwnedOrEmpty(string userData)
@@ -162,6 +184,23 @@ namespace NKStudio.TabularEditor.Data
         public static TableFileFormatOverride LoadFileFormat(string assetPath)
         {
             return ParseFileFormat(ReadUserData(assetPath));
+        }
+
+        /// <summary>
+        /// 파일의 .meta에 기록된 에셋 경로 미리보기 켜짐 여부를 읽습니다. 경로가 없으면(새 테이블) 켜짐입니다.
+        /// </summary>
+        public static bool LoadAssetPreviewEnabled(string assetPath)
+        {
+            return ParseAssetPreviewEnabled(ReadUserData(assetPath));
+        }
+
+        /// <summary>
+        /// 이 파일의 에셋 경로 미리보기 켜짐 여부를 .meta에 기록합니다. 다른 항목은 그대로 둡니다. 재임포트는 하지 않습니다.
+        /// </summary>
+        /// <returns>기록했으면 true입니다. 다른 도구의 userData가 있어 기록하지 않았으면 false입니다.</returns>
+        public static bool SaveAssetPreviewEnabled(string assetPath, bool isEnabled)
+        {
+            return WriteUserData(assetPath, "asset path preview", userData => FormatAssetPreviewEnabled(userData, isEnabled));
         }
 
         /// <summary>
@@ -230,6 +269,9 @@ namespace NKStudio.TabularEditor.Data
 
             if (settings.quoteMode != Unset)
                 json.Append(",\"quoteMode\":").Append(settings.quoteMode);
+
+            if (settings.assetPreviewOff)
+                json.Append(",\"assetPreviewOff\":true");
 
             return json.Append('}').ToString();
         }

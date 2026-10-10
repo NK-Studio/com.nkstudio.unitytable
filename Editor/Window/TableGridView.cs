@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using NKStudio.TabularEditor.AssetLinks;
 using NKStudio.TabularEditor.Commands;
 using NKStudio.TabularEditor.Data;
 using NKStudio.TabularEditor.Selection;
@@ -19,6 +20,7 @@ namespace NKStudio.TabularEditor.Window
     {
         private const string CellClassName = "table-editor__cell";
         private const string CellLabelClassName = "table-editor__cell-label";
+        private const string CellAssetIconClassName = "table-editor__cell-asset-icon";
         private const string SelectedClassName = "table-editor__cell--selected";
         private const string ActiveClassName = "table-editor__cell--active";
         private const string MatchClassName = "table-editor__cell--match";
@@ -64,6 +66,12 @@ namespace NKStudio.TabularEditor.Window
 
         // 채우기 핸들을 표 밖으로 끌면 이 주기(ms)마다 스크롤한다. 한 번에 움직이는 양은 밖으로 나간 거리에 비례하고 아래 범위로 자른다.
         private const long FillAutoScrollIntervalMs = 30;
+
+        // 에셋 경로 셀 위에 마우스를 이만큼(ms) 머물러야 미리보기 카드를 띄운다. 지나가기만 할 때 카드가 깜빡이지 않게 한다.
+        private const long AssetHoverDelayMs = 400;
+
+        // 셀 값이 바뀐 뒤 에셋 경로 열을 다시 가리기까지 기다리는 시간(ms)이다. 붙여넣기처럼 한꺼번에 바뀌어도 한 번만 계산한다.
+        private const long AssetColumnRefreshDelayMs = 200;
         private const float FillAutoScrollMinStep = 4f;
         private const float FillAutoScrollMaxStep = 40f;
         private const string MeasureWrapClassName = "table-editor__measure--wrap";
@@ -100,6 +108,13 @@ namespace NKStudio.TabularEditor.Window
         private readonly VisualElement _frozenFillPreviewLayer;
         private readonly VisualElement _frozenFillPreviewBox;
         private readonly List<VisualElement> _fillHandles = new();
+        private readonly List<bool> _assetColumns = new();
+        private readonly TableAssetPreviewCard _assetCard;
+        private readonly IVisualElementScheduledItem _assetColumnRefresh;
+        private IVisualElementScheduledItem _assetHoverShow;
+        private CellCoord? _assetHoverCell;
+        // 창이 전역 설정과 파일 설정을 합쳐 ApplyAssetPathPreview로 정한다.
+        private bool _isAssetPathPreviewEnabled = TableEditorSettings.AssetPathPreview;
 
         private TableGridMetrics _metrics = TableGridMetrics.FromFontSize(TableEditorSettings.FontSize);
 
@@ -268,6 +283,14 @@ namespace NKStudio.TabularEditor.Window
             _fillAutoScroll.Pause();
             _autoFitUpdate.Pause();
 
+            // 에셋 경로 열: 셀 아이콘·미리보기 카드·Ctrl/Cmd+클릭. 카드는 다른 오버레이보다 나중에 붙여 맨 위에 그린다.
+            _assetCard = new TableAssetPreviewCard(_container);
+            _assetColumnRefresh = _listView.schedule.Execute(RefreshAssetColumns);
+            _assetColumnRefresh.Pause();
+            _container.RegisterCallback<PointerMoveEvent>(OnAssetHover, TrickleDown.TrickleDown);
+            _container.RegisterCallback<PointerLeaveEvent>(OnAssetHoverLeave);
+            AssetPathIndex.Changed += RefreshAssetColumns;
+
             ApplyMetricsToElements();
         }
 
@@ -367,6 +390,142 @@ namespace NKStudio.TabularEditor.Window
 
             evt.StopPropagation();
             _scrollView.scrollOffset = next;
+        }
+
+        // ── 에셋 경로 열 ──────────────────────────────────────────────
+        // 값의 절반 이상이 에셋으로 찾아지는 열을 자동으로 에셋 경로 열로 본다(AssetColumnDetector).
+        // 그 열의 셀은 글자 앞에 Project 창 아이콘을 붙이고, 마우스를 올려 두면 미리보기 카드를 띄운다.
+
+        // 아이콘 한 변(px)이다. 기준 글꼴 12px에서 Project 창 아이콘과 같은 16px이고 글꼴 크기에 비례한다.
+        private float AssetIconSize => MathF.Round(_metrics.FontSize * 4f / 3f);
+
+        // 아이콘과 글자 사이 여백을 더한, 아이콘이 차지하는 폭이다.
+        private float AssetIconWidth => AssetIconSize + 3f;
+
+        private bool IsAssetColumn(int columnIndex)
+        {
+            return columnIndex >= 0 && columnIndex < _assetColumns.Count && _assetColumns[columnIndex];
+        }
+
+        private bool TryGetAssetPath(CellCoord coord, out string assetPath)
+        {
+            assetPath = null;
+
+            if (_document == null || IsAssetColumn(coord.Column) == false)
+                return false;
+
+            return AssetPathIndex.TryResolve(_document.GetCell(coord.Row, coord.Column), out assetPath);
+        }
+
+        /// <summary>
+        /// 에셋 경로 미리보기를 켜고 끕니다(전역 Preferences와 파일 .meta를 합친 값). 다른 설정(글꼴 줌 등)이 바뀔 때마다 다시 가리지 않도록 값이 바뀐 경우만 한다.
+        /// </summary>
+        public void ApplyAssetPathPreview(bool isEnabled)
+        {
+            if (_isAssetPathPreviewEnabled == isEnabled)
+                return;
+
+            _isAssetPathPreviewEnabled = isEnabled;
+            RefreshAssetColumns();
+        }
+
+        /// <summary>
+        /// 에셋 경로 열을 다시 가리고 보이는 셀의 아이콘을 다시 그립니다. Preferences에서 끄면 모든 열을 끈다.
+        /// </summary>
+        public void RefreshAssetColumns()
+        {
+            _assetColumnRefresh.Pause();
+            ClearAssetHover();
+            _assetColumns.Clear();
+
+            if (_document != null)
+            {
+                bool isEnabled = _isAssetPathPreviewEnabled;
+
+                for (int column = 0; column < _document.ColumnCount; column++)
+                {
+                    _assetColumns.Add(isEnabled && AssetColumnDetector.IsAssetColumn(
+                        EnumerateBodyValues(column),
+                        value => AssetPathIndex.TryResolve(value, out _)));
+                }
+            }
+
+            RebindVisibleColumns();
+        }
+
+        // 헤더 행을 뺀 본문 값을 위에서부터 돌려준다. 빈 칸은 문자열을 만들지 않고 건너뛴다.
+        private IEnumerable<string> EnumerateBodyValues(int column)
+        {
+            for (int row = HeaderRowCount; row < _document.RowCount; row++)
+            {
+                if (_document.GetCellLengthHint(row, column) == 0)
+                    continue;
+
+                yield return _document.GetCell(row, column);
+            }
+        }
+
+        private void BindAssetIcon(VisualElement cell, Label label, int columnIndex, string value)
+        {
+            VisualElement icon = cell.Q(className: CellAssetIconClassName);
+
+            if (icon == null)
+                return;
+
+            if (IsAssetColumn(columnIndex) == false || AssetPathIndex.TryResolve(value, out string assetPath) == false)
+            {
+                icon.style.display = DisplayStyle.None;
+                label.style.paddingLeft = StyleKeyword.Null;
+                return;
+            }
+
+            icon.style.backgroundImage = new StyleBackground(AssetPathIndex.GetIcon(assetPath) as Texture2D);
+            icon.style.width = AssetIconSize;
+            icon.style.height = AssetIconSize;
+            icon.style.display = DisplayStyle.Flex;
+            label.style.paddingLeft = AssetIconWidth;
+        }
+
+        // 마우스가 에셋 경로 셀 위에 잠깐 머물면 카드를 띄운다. 끌기·편집 중에는 띄우지 않는다.
+        private void OnAssetHover(PointerMoveEvent evt)
+        {
+            bool isBusy = evt.pressedButtons != 0 || _isFillDragging || _isEditing || _dragSelectMode != DragSelectMode.None;
+
+            if (isBusy || TryGetCellAt(evt.position, out CellCoord coord) == false || TryGetAssetPath(coord, out _) == false)
+            {
+                ClearAssetHover();
+                return;
+            }
+
+            if (_assetHoverCell.HasValue && _assetHoverCell.Value.Equals(coord))
+                return;
+
+            ClearAssetHover();
+            _assetHoverCell = coord;
+            _assetHoverShow = _container.schedule.Execute(() => ShowAssetCard(coord)).StartingIn(AssetHoverDelayMs);
+        }
+
+        private void OnAssetHoverLeave(PointerLeaveEvent evt)
+        {
+            ClearAssetHover();
+        }
+
+        private void ShowAssetCard(CellCoord coord)
+        {
+            VisualElement cell = FindCellElement(coord);
+
+            if (cell == null || TryGetAssetPath(coord, out string assetPath) == false)
+                return;
+
+            _assetCard.Show(assetPath, cell.worldBound);
+        }
+
+        private void ClearAssetHover()
+        {
+            _assetHoverCell = null;
+            _assetHoverShow?.Pause();
+            _assetHoverShow = null;
+            _assetCard?.Hide();
         }
 
         // 채우기 핸들: 선택 범위 오른쪽 아래의 동그란 핸들을 끌어 늘린 칸을 채운다. 규칙은 FillDrag·FillSeries.
@@ -677,6 +836,7 @@ namespace NKStudio.TabularEditor.Window
             CancelEdit();
             RebuildColumnLayout();
             RebuildItems();
+            RefreshAssetColumns();
 
             if (preserveView == false)
             {
@@ -710,6 +870,9 @@ namespace NKStudio.TabularEditor.Window
             CommitEdit();
             RebuildItems();
             RefreshCellStates();
+
+            // 헤더 행은 에셋 경로 열을 가릴 때 빼므로, 헤더 행 수가 바뀌면 다시 가린다.
+            RefreshAssetColumns();
         }
 
         /// <summary>
@@ -1175,6 +1338,12 @@ namespace NKStudio.TabularEditor.Window
             _container.UnregisterCallback<WheelEvent>(OnGridWheel, TrickleDown.TrickleDown);
             _autoFitUpdate.Pause();
             _fillAutoScroll.Pause();
+            _assetColumnRefresh.Pause();
+            _assetHoverShow?.Pause();
+            _container.UnregisterCallback<PointerMoveEvent>(OnAssetHover, TrickleDown.TrickleDown);
+            _container.UnregisterCallback<PointerLeaveEvent>(OnAssetHoverLeave);
+            AssetPathIndex.Changed -= RefreshAssetColumns;
+            _assetCard.Dispose();
             _header.UnregisterCallback<PointerDownEvent>(OnHeaderPointerDown, TrickleDown.TrickleDown);
             _header.RemoveManipulator(_headerMenuManipulator);
             _scrollView.horizontalScroller.valueChanged -= OnHorizontalScrollChanged;
@@ -1203,6 +1372,8 @@ namespace NKStudio.TabularEditor.Window
 
         private void OnHorizontalScrollChanged(float scrollX)
         {
+            ClearAssetHover();
+
             // 메뉴는 열 제목에 붙어 있으므로 열이 움직이면 위치가 어긋난다.
             _columnMenu.Close();
             _headerContent.style.left = -scrollX;
@@ -1219,6 +1390,8 @@ namespace NKStudio.TabularEditor.Window
 
         private void OnVerticalScrollChanged(float scrollY)
         {
+            ClearAssetHover();
+
             UpdateSelectionBoxPlacement();
             _placementUpdate.ExecuteLater(0);
         }
@@ -1257,6 +1430,8 @@ namespace NKStudio.TabularEditor.Window
 
         private void OnGridPointerDown(PointerDownEvent evt)
         {
+            ClearAssetHover();
+
             if (evt.button != 0)
                 return;
 
@@ -1553,7 +1728,13 @@ namespace NKStudio.TabularEditor.Window
             widest = Math.Max(widest, MeasureWidest(_headerMeasureLabel, columnIndex, 0, HeaderRowCount - 1));
             // 본문은 위에서부터 '스캔할 행 수'만큼만 본다(Preferences). 헤더 행은 항상 본다.
             int lastScannedRow = (int)Math.Min(MaxRow, (long)HeaderRowCount + TableEditorSettings.AutoFitScanRows - 1);
-            widest = Math.Max(widest, MeasureWidest(_measureLabel, columnIndex, HeaderRowCount, lastScannedRow));
+            float bodyWidest = MeasureWidest(_measureLabel, columnIndex, HeaderRowCount, lastScannedRow);
+
+            // 에셋 경로 열은 글자 앞에 아이콘이 붙으므로 그만큼 넓힌다.
+            if (bodyWidest > 0f && IsAssetColumn(columnIndex))
+                bodyWidest += AssetIconWidth;
+
+            widest = Math.Max(widest, bodyWidest);
 
             if (widest <= 0f || float.IsNaN(widest))
             {
@@ -1783,6 +1964,8 @@ namespace NKStudio.TabularEditor.Window
 
         private void OnDocumentCellChanged(int row, int column)
         {
+            _assetColumnRefresh.ExecuteLater(AssetColumnRefreshDelayMs);
+
             if (TableEditorSettings.AutoFitOnEdit)
             {
                 _pendingAutoFitCells.Add(new CellCoord(row, column));
@@ -1812,6 +1995,7 @@ namespace NKStudio.TabularEditor.Window
             RebuildColumnLayout();
             RebuildItems();
             Selection.Clamp(0, _document?.RowCount ?? 1, _document?.ColumnCount ?? 1);
+            RefreshAssetColumns();
         }
 
         private void OnSelectionChanged()
@@ -2143,9 +2327,13 @@ namespace NKStudio.TabularEditor.Window
                 cell.style.width = _columnWidths[columnIndex];
 
                 Label label = cell.Q<Label>(className: CellLabelClassName);
+                string value = _document.GetCell(documentRow, columnIndex);
 
                 if (label != null)
-                    label.text = _document.GetCell(documentRow, columnIndex);
+                {
+                    label.text = value;
+                    BindAssetIcon(cell, label, columnIndex, value);
+                }
 
                 // 셀 요소는 재활용되므로 선택 상태를 매번 모델에서 다시 적용해야 한다.
                 UpdateCellState(cell);
@@ -2246,6 +2434,12 @@ namespace NKStudio.TabularEditor.Window
             label.pickingMode = PickingMode.Ignore;
             cell.Add(label);
 
+            // 에셋 경로 열에서만 보인다(BindAssetIcon).
+            VisualElement assetIcon = new() { pickingMode = PickingMode.Ignore };
+            assetIcon.AddToClassList(CellAssetIconClassName);
+            assetIcon.style.display = DisplayStyle.None;
+            cell.Add(assetIcon);
+
             cell.RegisterCallback<PointerDownEvent>(OnCellPointerDown);
             cell.AddManipulator(new ContextualMenuManipulator(BuildCellContextMenu));
 
@@ -2264,6 +2458,10 @@ namespace NKStudio.TabularEditor.Window
                 return;
 
             CellCoord coord = new(binding.Row, binding.Column);
+
+            // Ctrl/Cmd+클릭: 에셋 경로면 Project 창에서 그 에셋을 찾아 보여 준다. 셀 선택은 평소처럼 한다.
+            if (evt.actionKey && TryGetAssetPath(coord, out string assetPath))
+                AssetPathIndex.Ping(assetPath);
 
             if (evt.clickCount >= 2)
             {
@@ -2291,14 +2489,25 @@ namespace NKStudio.TabularEditor.Window
             if (_document == null)
                 return;
 
+            string assetPath = null;
+
             if (evt.currentTarget is VisualElement cell && cell.userData is TableCellBinding binding)
             {
                 // 선택 범위 밖을 우클릭하면 그 셀로 옮기고, 범위 안이면 선택을 유지한다.
                 if (!Selection.Contains(binding.Row, binding.Column))
                     SetActiveCell(new CellCoord(binding.Row, binding.Column), false);
+
+                TryGetAssetPath(new CellCoord(binding.Row, binding.Column), out assetPath);
             }
 
             evt.menu.ClearItems();
+
+            // 우클릭한 셀이 에셋 경로면 Project 창에서 그 에셋을 찾아 주는 항목을 맨 위에 둔다(Ctrl/Cmd+클릭과 같다).
+            if (assetPath != null)
+            {
+                evt.menu.AppendAction(Localization.Get("menu.pingAsset"), _ => AssetPathIndex.Ping(assetPath));
+                evt.menu.AppendSeparator();
+            }
 
             AppendRowActions(evt.menu);
             evt.menu.AppendSeparator();

@@ -49,6 +49,15 @@ namespace NKStudio.TabularEditor.Window
             set => SetBool("MouseWheelZoom", value);
         }
 
+        /// <summary>
+        /// 에셋 경로 열(값이 Resources 경로 등으로 에셋을 가리키는 열)에 아이콘·미리보기를 보일지 여부입니다.
+        /// </summary>
+        public static bool AssetPathPreview
+        {
+            get => EditorPrefs.GetBool(Prefix + "AssetPathPreview", true);
+            set => SetBool("AssetPathPreview", value);
+        }
+
         // 열 너비 자동 맞춤
 
         public static bool AutoFitOnOpen
@@ -167,7 +176,7 @@ namespace NKStudio.TabularEditor.Window
                          "FontSize", "MouseWheelZoom", "AutoFitOnOpen", "AutoFitOnEdit", "AutoFitScanRows",
                          "AutoFitMaxWidthPercent", "NewTableRows", "NewTableColumns", "NewTableEncodingIndex",
                          "NewTableDelimiter", "NewTableQuote", "NewTableQuoteMode", "NewTableUsesCrlf",
-                         "NewTableEndsWithNewLine",
+                         "NewTableEndsWithNewLine", "AssetPathPreview",
                      })
             {
                 EditorPrefs.DeleteKey(Prefix + key);

@@ -19,6 +19,7 @@ namespace NKStudio.TabularEditor
             ["menu.theme"] = ("Theme", "테마"),
             ["menu.language"] = ("Language", "언어"),
             ["menu.preferences"] = ("Preferences...", "환경 설정..."),
+            ["menu.assetPreviewForFile"] = ("Asset Path Preview for This File", "이 파일에서 에셋 경로 미리보기"),
 
             // Preferences
             ["prefs.reset"] = ("Reset to Defaults", "기본값으로 되돌리기"),
@@ -39,6 +40,10 @@ namespace NKStudio.TabularEditor
             ["prefs.wheelZoomDesc"] = (
                 "Ctrl (Cmd on macOS) + mouse wheel increases or decreases the font size.",
                 "Ctrl(macOS에서는 Cmd) + 마우스 휠로 글꼴 크기를 키우고 줄입니다."),
+            ["prefs.assetPreview"] = ("Asset Path Preview", "에셋 경로 미리보기"),
+            ["prefs.assetPreviewDesc"] = (
+                "Columns whose values are asset paths (Resources paths like Art/Sprite/icon, or Assets/… paths) are detected automatically. Their cells show the asset icon, hovering shows a preview, and Ctrl (Cmd on macOS) + click pings the asset in the Project window. Turning this off disables it for every file; to turn it off for one file only, use the ⋮ menu of that file's window (saved in its .meta).",
+                "값이 에셋 경로(Art/Sprite/icon 같은 Resources 경로, 또는 Assets/… 경로)인 열을 자동으로 찾습니다. 그 열의 셀에 에셋 아이콘을 붙이고, 마우스를 올리면 미리보기를 보여 주며, Ctrl(macOS는 Cmd)+클릭하면 Project 창에서 에셋을 찾아 줍니다. 여기서 끄면 모든 파일에서 꺼지고, 한 파일만 끄려면 그 파일 창의 ⋮ 메뉴를 씁니다(.meta에 저장)."),
             ["prefs.autoFit"] = ("Column Auto-Fit", "열 너비 자동 맞춤"),
             ["prefs.onOpen"] = ("On File Open", "파일을 열 때"),
             ["prefs.onOpenDesc"] = (
@@ -199,6 +204,7 @@ namespace NKStudio.TabularEditor
             ["goto.placeholder"] = ("e.g. 12, C12", "예: 12, C12"),
 
             // 우클릭·열 메뉴
+            ["menu.pingAsset"] = ("Show in Project", "Project 창에서 보기"),
             ["menu.sort"] = ("Sort", "정렬"),
             ["menu.sortAscending"] = ("Sort Ascending", "오름차순 정렬"),
             ["menu.sortDescending"] = ("Sort Descending", "내림차순 정렬"),

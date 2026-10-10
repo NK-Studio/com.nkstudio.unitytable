@@ -79,6 +79,9 @@ namespace NKStudio.TabularEditor.Window
 
             TableEditorSettings.MouseWheelZoom = EditorGUILayout.Toggle(Localization.Get("prefs.wheelZoom"), TableEditorSettings.MouseWheelZoom);
             Description(Localization.Get("prefs.wheelZoomDesc"));
+
+            TableEditorSettings.AssetPathPreview = EditorGUILayout.Toggle(Localization.Get("prefs.assetPreview"), TableEditorSettings.AssetPathPreview);
+            Description(Localization.Get("prefs.assetPreviewDesc"));
         }
 
         private static void DrawAutoFitSection()

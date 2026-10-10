@@ -24,6 +24,26 @@ namespace NKStudio.TabularEditor.Tests
         }
 
         [Test]
+        public void Test_AssetPreview_DefaultIsEnabledAndLeavesMetaEmpty()
+        {
+            Assert.IsTrue(TableAssetSettings.ParseAssetPreviewEnabled(string.Empty));
+            Assert.AreEqual(string.Empty, TableAssetSettings.FormatAssetPreviewEnabled(string.Empty, true));
+        }
+
+        [Test]
+        public void Test_AssetPreview_OffRoundTripsAndKeepsHeaderRows()
+        {
+            string userData = TableAssetSettings.FormatAssetPreviewEnabled(TableAssetSettings.FormatHeaderRowCount(2), false);
+
+            Assert.IsFalse(TableAssetSettings.ParseAssetPreviewEnabled(userData));
+            Assert.AreEqual(2, TableAssetSettings.ParseHeaderRowCount(userData));
+
+            string turnedOn = TableAssetSettings.FormatAssetPreviewEnabled(userData, true);
+            Assert.IsTrue(TableAssetSettings.ParseAssetPreviewEnabled(turnedOn));
+            Assert.AreEqual(2, TableAssetSettings.ParseHeaderRowCount(turnedOn));
+        }
+
+        [Test]
         public void Test_ParseHeaderRowCount_EmptyIsZero()
         {
             Assert.AreEqual(0, TableAssetSettings.ParseHeaderRowCount(null));

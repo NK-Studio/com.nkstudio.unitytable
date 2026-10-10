@@ -69,6 +69,9 @@ namespace NKStudio.TabularEditor.Window
         private TableFileFormatDialog _formatDialog;
         private TableGoToBar _goToBar;
 
+        // 이 파일의 에셋 경로 미리보기 켜짐 여부(.meta). 실제로는 Preferences의 전역 설정도 켜져 있어야 보인다.
+        private bool _isFileAssetPreviewEnabled = true;
+
         private VisualElement _externalChangeBar;
         private Button _externalReloadButton;
         private Button _externalDismissButton;
@@ -198,6 +201,22 @@ namespace NKStudio.TabularEditor.Window
         private void OnSettingsChanged()
         {
             _gridView?.ApplyFontSize(TableEditorSettings.FontSize);
+            ApplyAssetPathPreview();
+        }
+
+        // 전역(Preferences)과 이 파일(.meta)이 모두 켜져 있어야 에셋 경로 미리보기를 보인다.
+        private void ApplyAssetPathPreview()
+        {
+            _gridView?.ApplyAssetPathPreview(TableEditorSettings.AssetPathPreview && _isFileAssetPreviewEnabled);
+        }
+
+        private void ToggleFileAssetPreview()
+        {
+            _isFileAssetPreviewEnabled = _isFileAssetPreviewEnabled == false;
+
+            // 다른 도구가 .meta userData를 쓰고 있으면 기록하지 못한다(경고는 TableAssetSettings가 남긴다). 그래도 이번 세션에는 반영한다.
+            TableAssetSettings.SaveAssetPreviewEnabled(assetPath, _isFileAssetPreviewEnabled);
+            ApplyAssetPathPreview();
         }
 
         private void OnDisable()
@@ -298,6 +317,17 @@ namespace NKStudio.TabularEditor.Window
                     new GUIContent($"{language}/{Localization.DisplayName(option)}"),
                     Localization.Current == option,
                     () => Localization.Current = option);
+            }
+
+            // 이 파일만 끄고 켠다(.meta에 저장해 팀과 공유). 전역 설정이 꺼져 있으면 고를 수 없다.
+            if (string.IsNullOrEmpty(assetPath) == false)
+            {
+                GUIContent fileAssetPreview = new(Localization.Get("menu.assetPreviewForFile"));
+
+                if (TableEditorSettings.AssetPathPreview)
+                    menu.AddItem(fileAssetPreview, _isFileAssetPreviewEnabled, ToggleFileAssetPreview);
+                else
+                    menu.AddDisabledItem(fileAssetPreview, _isFileAssetPreviewEnabled);
             }
 
             // 글꼴 크기·자동 맞춤·새 CSV 형식 등 나머지 설정은 Preferences 페이지에 있다.
@@ -466,6 +496,10 @@ namespace NKStudio.TabularEditor.Window
 
         private void BindDocumentToViews(bool preserveView = false)
         {
+            // 문서를 붙이기 전에 정해야, 꺼 둔 파일에서 에셋 경로 열을 괜히 가리지 않는다.
+            _isFileAssetPreviewEnabled = TableAssetSettings.LoadAssetPreviewEnabled(assetPath);
+            ApplyAssetPathPreview();
+
             _gridView?.SetDocument(_document, preserveView);
             _gridView?.SetHeaderRowCount(TableAssetSettings.LoadHeaderRowCount(assetPath));
             _searchController?.Refresh();
